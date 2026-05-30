@@ -121,7 +121,7 @@ app.get("/", (req, res) => {
   res.send("Portfolio Admin Backend Running");
 });
 
-app.post("/api/admin/login", (req, res) => {
+app.post("/api/admin/login", async (req, res) => {
   if (req.body.key !== await getAdminKey()) {
     return res.status(401).json({ error: "Invalid admin key" });
   }
