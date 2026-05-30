@@ -65,12 +65,33 @@ function cleanIp(ip = "") {
 }
 
 async function getGeo(ip) {
-  return {
-    city: "Unknown",
-    country: "Unknown",
-    lat: 22.3072,
-    lng: 73.1812
-  };
+  if (!ip || ip === "127.0.0.1" || ip === "localhost") {
+    return {
+      city: "Vadodara",
+      country: "India",
+      lat: 22.3072,
+      lng: 73.1812
+    };
+  }
+
+  try {
+    const res = await fetch(`https://ipapi.co/${ip}/json/`);
+    const data = await res.json();
+
+    return {
+      city: data.city || "Unknown",
+      country: data.country_name || "Unknown",
+      lat: data.latitude || 22.3072,
+      lng: data.longitude || 73.1812
+    };
+  } catch {
+    return {
+      city: "Unknown",
+      country: "Unknown",
+      lat: 22.3072,
+      lng: 73.1812
+    };
+  }
 }
 
 app.get("/", (req, res) => {
