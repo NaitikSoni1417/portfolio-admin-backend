@@ -54,6 +54,15 @@ const Message = mongoose.model("Message", messageSchema);
 
 const settingSchema = new mongoose.Schema({
   adminKey: String,
+  maintenanceMode: { type: Boolean, default: false },
+  liveTracking: { type: Boolean, default: true },
+  adminLogs: [
+    {
+      action: String,
+      ip: String,
+      createdAt: { type: Date, default: Date.now }
+    }
+  ],
   updatedAt: { type: Date, default: Date.now }
 });
 const Setting = mongoose.model("Setting", settingSchema);
@@ -289,6 +298,47 @@ app.patch("/api/admin/change-password", auth, async (req, res) => {
   } catch {
     res.status(500).json({ error: "Password update failed" });
   }
+});
+
+
+app.get("/api/admin/command-center", auth, async (req, res) => {
+  let setting = await Setting.findOne();
+  if (!setting) setting = await Setting.create({});
+  res.json({
+    maintenanceMode: setting.maintenanceMode || false,
+    liveTracking: setting.liveTracking !== false,
+    adminLogs: (setting.adminLogs || []).slice(-30).reverse()
+  });
+});
+
+app.patch("/api/admin/command-center", auth, async (req, res) => {
+  const { maintenanceMode, liveTracking, action } = req.body;
+
+  let setting = await Setting.findOne();
+  if (!setting) setting = await Setting.create({});
+
+  if (typeof maintenanceMode === "boolean") setting.maintenanceMode = maintenanceMode;
+  if (typeof liveTracking === "boolean") setting.liveTracking = liveTracking;
+
+  setting.adminLogs.push({
+    action: action || "Command Center updated",
+    ip: req.ip
+  });
+
+  setting.updatedAt = new Date();
+  await setting.save();
+
+  res.json({ success: true, setting });
+});
+
+app.delete("/api/admin/visitors", auth, async (req, res) => {
+  await Visitor.deleteMany({});
+  res.json({ success: true });
+});
+
+app.delete("/api/admin/messages", auth, async (req, res) => {
+  await Message.deleteMany({});
+  res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 5050;
