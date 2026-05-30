@@ -45,6 +45,18 @@ const messageSchema = new mongoose.Schema({
   name: String,
   email: String,
   message: String,
+  ip: String,
+  city: String,
+  region: String,
+  country: String,
+  isp: String,
+  lat: Number,
+  lng: Number,
+  browser: String,
+  os: String,
+  device: String,
+  page: String,
+  userAgent: String,
   status: { type: String, default: "Unread" },
   createdAt: { type: Date, default: Date.now }
 });
@@ -174,14 +186,39 @@ app.post("/api/track", async (req, res) => {
 
 app.post("/api/contact", async (req, res) => {
   try {
-    const { name, email, message } = req.body;
+    const { name, email, message, page, publicIp } = req.body;
+
     if (!name || !email || !message) {
       return res.status(400).json({ error: "All fields required" });
     }
 
-    await Message.create({ name, email, message });
+    const parser = new UAParser(req.headers["user-agent"]);
+    const ua = parser.getResult();
+
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const ip = cleanIp(publicIp || forwardedIp || req.clientIp || req.ip);
+    const geo = await getGeo(ip);
+
+    await Message.create({
+      name,
+      email,
+      message,
+      ip,
+      city: geo.city,
+      region: geo.region,
+      country: geo.country,
+      isp: geo.isp,
+      lat: geo.lat,
+      lng: geo.lng,
+      browser: ua.browser.name || "Unknown",
+      os: ua.os.name || "Unknown",
+      device: ua.device.type || "Desktop",
+      page: page || "/contact",
+      userAgent: req.headers["user-agent"]
+    });
+
     res.json({ success: true });
-  } catch {
+  } catch (err) {
     res.status(500).json({ error: "Message failed" });
   }
 });
