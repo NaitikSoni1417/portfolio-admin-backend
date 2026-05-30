@@ -233,5 +233,29 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
   });
 });
 
+
+app.patch("/api/admin/messages/:id/status", auth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const msg = await Message.findByIdAndUpdate(
+      req.params.id,
+      { status: status || "Read" },
+      { new: true }
+    );
+    res.json({ success: true, message: msg });
+  } catch {
+    res.status(500).json({ error: "Status update failed" });
+  }
+});
+
+app.delete("/api/admin/messages/:id", auth, async (req, res) => {
+  try {
+    await Message.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Delete failed" });
+  }
+});
+
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
