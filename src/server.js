@@ -65,35 +65,12 @@ function cleanIp(ip = "") {
 }
 
 async function getGeo(ip) {
-  if (!ip || ip === "127.0.0.1" || ip === "localhost") {
-    return {
-      city: "Vadodara",
-      country: "India",
-      lat: 22.3072,
-      lng: 73.1812
-    };
-  }
-
-  try {
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
-    const data = await res.json();
-
-    if (data.status !== "success") throw new Error("Geo failed");
-
-    return {
-      city: data.city || "Unknown",
-      country: data.country || "Unknown",
-      lat: data.lat || 22.3072,
-      lng: data.lon || 73.1812
-    };
-  } catch {
-    return {
-      city: "Unknown",
-      country: "Unknown",
-      lat: 22.3072,
-      lng: 73.1812
-    };
-  }
+  return {
+    city: "Unknown",
+    country: "Unknown",
+    lat: 22.3072,
+    lng: 73.1812
+  };
 }
 
 app.get("/", (req, res) => {
