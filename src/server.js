@@ -25,12 +25,15 @@ mongoose.connect(process.env.MONGO_URI)
 
 const visitorSchema = new mongoose.Schema({
   ip: String,
+  visitorId: String,
   page: String,
   browser: String,
   os: String,
   device: String,
   city: String,
+  region: String,
   country: String,
+  isp: String,
   isp: String,
   lat: Number,
   lng: Number,
@@ -69,7 +72,9 @@ async function getGeo(ip) {
   if (!ip || ip === "127.0.0.1" || ip === "localhost") {
     return {
       city: "Vadodara",
+      region: "Gujarat",
       country: "India",
+      isp: "Localhost",
       lat: 22.3072,
       lng: 73.1812
     };
@@ -79,24 +84,24 @@ async function getGeo(ip) {
     const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,isp,query`);
     const data = await res.json();
 
-    if (data.status !== "success") {
-      throw new Error("Geo lookup failed");
-    }
+    if (data.status !== "success") throw new Error("Geo failed");
 
     return {
       city: data.city || data.regionName || "Unknown",
+      region: data.regionName || "Unknown",
       country: data.country || "Unknown",
+      isp: data.isp || "Unknown",
       lat: data.lat || 22.3072,
-      lng: data.lon || 73.1812,
-      isp: data.isp || "Unknown"
+      lng: data.lon || 73.1812
     };
   } catch {
     return {
       city: "Unknown",
+      region: "Unknown",
       country: "Unknown",
+      isp: "Unknown",
       lat: 22.3072,
-      lng: 73.1812,
-      isp: "Unknown"
+      lng: 73.1812
     };
   }
 }
@@ -128,6 +133,7 @@ app.post("/api/track", async (req, res) => {
 
     await Visitor.create({
       ip,
+      visitorId: req.body.visitorId || ip,
       page: req.body.page || "/",
       browser: ua.browser.name || "Unknown",
       os: ua.os.name || "Unknown",
@@ -173,13 +179,35 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
   const todayViews = await Visitor.countDocuments({ createdAt: { $gte: todayStart } });
-  const recentVisitors = await Visitor.find().sort({ createdAt: -1 }).limit(50);
+  const recentVisitorsRaw = await Visitor.find().sort({ createdAt: -1 }).limit(50);
   const messages = await Message.find().sort({ createdAt: -1 }).limit(20);
+
+  const recentVisitors = await Promise.all(
+    recentVisitorsRaw.map(async (v) => {
+      const visits = await Visitor.countDocuments({ visitorId: v.visitorId || v.ip });
+      const obj = v.toObject();
+      obj.visits = visits;
+      obj.isReturning = visits > 1;
+      return obj;
+    })
+  );
 
   const topPages = await Visitor.aggregate([{ $group: { _id: "$page", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 6 }]);
   const browsers = await Visitor.aggregate([{ $group: { _id: "$browser", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
   const devices = await Visitor.aggregate([{ $group: { _id: "$device", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
   const osStats = await Visitor.aggregate([{ $group: { _id: "$os", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+
+  const countries = await Visitor.aggregate([
+    { $group: { _id: "$country", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 8 }
+  ]);
+
+  const cities = await Visitor.aggregate([
+    { $group: { _id: "$city", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 8 }
+  ]);
 
   const dailyViews = await Visitor.aggregate([
     { $match: { createdAt: { $gte: sevenDaysAgo } } },
@@ -199,6 +227,8 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
     browsers,
     devices,
     osStats,
+    countries,
+    cities,
     dailyViews
   });
 });
