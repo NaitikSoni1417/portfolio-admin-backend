@@ -52,6 +52,17 @@ const messageSchema = new mongoose.Schema({
 const Visitor = mongoose.model("Visitor", visitorSchema);
 const Message = mongoose.model("Message", messageSchema);
 
+const settingSchema = new mongoose.Schema({
+  adminKey: String,
+  updatedAt: { type: Date, default: Date.now }
+});
+const Setting = mongoose.model("Setting", settingSchema);
+
+async function getAdminKey() {
+  const setting = await Setting.findOne();
+  return setting?.adminKey || process.env.ADMIN_KEY;
+}
+
 function auth(req, res, next) {
   const token = req.headers.authorization?.replace("Bearer ", "");
   if (!token) return res.status(401).json({ error: "No token" });
@@ -111,7 +122,7 @@ app.get("/", (req, res) => {
 });
 
 app.post("/api/admin/login", (req, res) => {
-  if (req.body.key !== process.env.ADMIN_KEY) {
+  if (req.body.key !== await getAdminKey()) {
     return res.status(401).json({ error: "Invalid admin key" });
   }
 
@@ -254,6 +265,29 @@ app.delete("/api/admin/messages/:id", auth, async (req, res) => {
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Delete failed" });
+  }
+});
+
+
+app.patch("/api/admin/change-password", auth, async (req, res) => {
+  try {
+    const { newKey } = req.body;
+    if (!newKey || newKey.length < 4) {
+      return res.status(400).json({ error: "Password must be at least 4 characters" });
+    }
+
+    let setting = await Setting.findOne();
+    if (!setting) {
+      setting = await Setting.create({ adminKey: newKey });
+    } else {
+      setting.adminKey = newKey;
+      setting.updatedAt = new Date();
+      await setting.save();
+    }
+
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Password update failed" });
   }
 });
 
