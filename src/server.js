@@ -31,6 +31,7 @@ const visitorSchema = new mongoose.Schema({
   device: String,
   city: String,
   country: String,
+  isp: String,
   lat: Number,
   lng: Number,
   userAgent: String,
@@ -75,21 +76,27 @@ async function getGeo(ip) {
   }
 
   try {
-    const res = await fetch(`https://ipapi.co/${ip}/json/`);
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,isp,query`);
     const data = await res.json();
 
+    if (data.status !== "success") {
+      throw new Error("Geo lookup failed");
+    }
+
     return {
-      city: data.city || "Unknown",
-      country: data.country_name || "Unknown",
-      lat: data.latitude || 22.3072,
-      lng: data.longitude || 73.1812
+      city: data.city || data.regionName || "Unknown",
+      country: data.country || "Unknown",
+      lat: data.lat || 22.3072,
+      lng: data.lon || 73.1812,
+      isp: data.isp || "Unknown"
     };
   } catch {
     return {
       city: "Unknown",
       country: "Unknown",
       lat: 22.3072,
-      lng: 73.1812
+      lng: 73.1812,
+      isp: "Unknown"
     };
   }
 }
@@ -127,6 +134,7 @@ app.post("/api/track", async (req, res) => {
       device: ua.device.type || "Desktop",
       city: geo.city,
       country: geo.country,
+      isp: geo.isp,
       lat: geo.lat,
       lng: geo.lng,
       userAgent: req.headers["user-agent"]
