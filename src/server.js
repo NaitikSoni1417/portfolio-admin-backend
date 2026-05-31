@@ -404,5 +404,85 @@ app.get("/api/admin/security-logs", auth, async (req, res) => {
   }
 });
 
+
+app.get("/api/admin/advanced-analytics", auth, async (req, res) => {
+  try {
+    const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100);
+
+    const failedLoginCount = await SecurityLog.countDocuments({
+      action: "FAILED_LOGIN"
+    });
+
+    const blockedIps = await SecurityLog.aggregate([
+      { $match: { reason: "Blocked" } },
+      {
+        $group: {
+          _id: "$ip",
+          attempts: { $max: "$attempts" },
+          blockedUntil: { $max: "$blockedUntil" },
+          lastSeen: { $max: "$createdAt" }
+        }
+      },
+      { $sort: { lastSeen: -1 } },
+      { $limit: 20 }
+    ]);
+
+    const hourlyTraffic = await Visitor.aggregate([
+      {
+        $group: {
+          _id: { $hour: "$createdAt" },
+          views: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const peak = hourlyTraffic.reduce(
+      (max, item) => (item.views > max.views ? item : max),
+      { _id: 0, views: 0 }
+    );
+
+    const referrers = await Visitor.aggregate([
+      {
+        $group: {
+          _id: "$page",
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 8 }
+    ]);
+
+    const suspiciousIps = await SecurityLog.aggregate([
+      { $match: { action: "FAILED_LOGIN" } },
+      {
+        $group: {
+          _id: "$ip",
+          failedAttempts: { $sum: 1 },
+          lastAttempt: { $max: "$createdAt" }
+        }
+      },
+      { $match: { failedAttempts: { $gte: 2 } } },
+      { $sort: { failedAttempts: -1 } },
+      { $limit: 10 }
+    ]);
+
+    res.json({
+      logs,
+      failedLoginCount,
+      blockedIps,
+      hourlyTraffic,
+      peakTime: {
+        hour: peak._id,
+        views: peak.views
+      },
+      referrers,
+      suspiciousIps
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Advanced analytics failed" });
+  }
+});
+
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
