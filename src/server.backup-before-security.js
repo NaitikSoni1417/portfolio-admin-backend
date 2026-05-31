@@ -64,38 +64,6 @@ const messageSchema = new mongoose.Schema({
 const Visitor = mongoose.model("Visitor", visitorSchema);
 const Message = mongoose.model("Message", messageSchema);
 
-const securityLogSchema = new mongoose.Schema({
-  ip: String,
-  action: String,
-  reason: String,
-  attempts: Number,
-  blockedUntil: Date,
-  userAgent: String,
-  createdAt: { type: Date, default: Date.now }
-});
-
-const SecurityLog = mongoose.model("SecurityLog", securityLogSchema);
-
-const loginAttempts = new Map();
-
-function getClientIp(req, publicIp = "") {
-  const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-  return cleanIp(publicIp || forwardedIp || req.clientIp || req.ip);
-}
-
-function isBlocked(ip) {
-  const item = loginAttempts.get(ip);
-  if (!item?.blockedUntil) return false;
-
-  if (Date.now() > item.blockedUntil) {
-    loginAttempts.delete(ip);
-    return false;
-  }
-
-  return true;
-}
-
-
 const settingSchema = new mongoose.Schema({
   adminKey: String,
   maintenanceMode: { type: Boolean, default: false },
@@ -175,67 +143,83 @@ app.get("/", (req, res) => {
 });
 
 app.post("/api/admin/login", async (req, res) => {
+  if (req.body.key !== await getAdminKey()) {
+    return res.status(401).json({ error: "Invalid admin key" });
+  }
+
+  const token = jwt.sign({ role: "admin" }, process.env.JWT_SECRET, {
+    expiresIn: "7d"
+  });
+
+  res.json({ token });
+});
+
+app.post("/api/track", async (req, res) => {
   try {
-    const { key, publicIp } = req.body;
-    const ip = getClientIp(req, publicIp);
-    const ua = req.headers["user-agent"] || "";
+    const parser = new UAParser(req.headers["user-agent"]);
+    const ua = parser.getResult();
 
-    if (isBlocked(ip)) {
-      const item = loginAttempts.get(ip);
-      return res.status(429).json({
-        error: "Too many wrong attempts. Try again later.",
-        blockedUntil: item.blockedUntil
-      });
-    }
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const ip = cleanIp(req.body.publicIp || forwardedIp || req.clientIp || req.ip);
+    const geo = await getGeo(ip);
 
-    const correctKey = await getAdminKey();
-
-    if (key !== correctKey) {
-      const current = loginAttempts.get(ip) || { count: 0 };
-      const count = current.count + 1;
-
-      let blockedUntil = null;
-
-      if (count >= 5) {
-        blockedUntil = Date.now() + 60 * 1000; // 1 min test block
-      }
-
-      loginAttempts.set(ip, { count, blockedUntil });
-
-      await SecurityLog.create({
-        ip,
-        action: "FAILED_LOGIN",
-        reason: blockedUntil ? "Blocked after 5 wrong attempts" : "Wrong admin password",
-        attempts: count,
-        blockedUntil: blockedUntil ? new Date(blockedUntil) : null,
-        userAgent: ua
-      });
-
-      return res.status(blockedUntil ? 429 : 401).json({
-        error: blockedUntil
-          ? "Too many wrong attempts. Blocked for 1 minute."
-          : "Invalid admin key",
-        attempts: count
-      });
-    }
-
-    loginAttempts.delete(ip);
-
-    const token = jwt.sign({ role: "admin" }, process.env.JWT_SECRET, {
-      expiresIn: "7d"
-    });
-
-    await SecurityLog.create({
+    await Visitor.create({
       ip,
-      action: "SUCCESS_LOGIN",
-      reason: "Admin logged in successfully",
-      attempts: 0,
-      userAgent: ua
+      visitorId: req.body.visitorId || ip,
+      page: req.body.page || "/",
+      browser: ua.browser.name || "Unknown",
+      os: ua.os.name || "Unknown",
+      device: ua.device.type || "Desktop",
+      city: geo.city,
+      country: geo.country,
+      isp: geo.isp,
+      lat: geo.lat,
+      lng: geo.lng,
+      userAgent: req.headers["user-agent"]
     });
 
-    res.json({ token });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Tracking failed" });
+  }
+});
+
+app.post("/api/contact", async (req, res) => {
+  try {
+    const { name, email, message, page, publicIp } = req.body;
+
+    if (!name || !email || !message) {
+      return res.status(400).json({ error: "All fields required" });
+    }
+
+    const parser = new UAParser(req.headers["user-agent"]);
+    const ua = parser.getResult();
+
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const ip = cleanIp(publicIp || forwardedIp || req.clientIp || req.ip);
+    const geo = await getGeo(ip);
+
+    await Message.create({
+      name,
+      email,
+      message,
+      ip,
+      city: geo.city,
+      region: geo.region,
+      country: geo.country,
+      isp: geo.isp,
+      lat: geo.lat,
+      lng: geo.lng,
+      browser: ua.browser.name || "Unknown",
+      os: ua.os.name || "Unknown",
+      device: ua.device.type || "Desktop",
+      page: page || "/contact",
+      userAgent: req.headers["user-agent"]
+    });
+
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Login failed" });
+    res.status(500).json({ error: "Message failed" });
   }
 });
 
@@ -392,16 +376,6 @@ app.delete("/api/admin/visitors", auth, async (req, res) => {
 app.delete("/api/admin/messages", auth, async (req, res) => {
   await Message.deleteMany({});
   res.json({ success: true });
-});
-
-
-app.get("/api/admin/security-logs", auth, async (req, res) => {
-  try {
-    const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100);
-    res.json(logs);
-  } catch {
-    res.status(500).json({ error: "Security logs failed" });
-  }
 });
 
 const PORT = process.env.PORT || 5050;
