@@ -183,7 +183,7 @@ app.post("/api/admin/login", async (req, res) => {
     if (isBlocked(ip)) {
       const item = loginAttempts.get(ip);
       return res.status(429).json({
-        error: "Too many wrong attempts. Try again later.",
+        error: "Blocked",
         blockedUntil: item.blockedUntil
       });
     }
@@ -197,7 +197,7 @@ app.post("/api/admin/login", async (req, res) => {
       let blockedUntil = null;
 
       if (count >= 5) {
-        blockedUntil = Date.now() + 60 * 1000; // 1 min test block
+        blockedUntil = Date.now() + 60 * 60 * 1000; // 1 hour block
       }
 
       loginAttempts.set(ip, { count, blockedUntil });
@@ -205,7 +205,7 @@ app.post("/api/admin/login", async (req, res) => {
       await SecurityLog.create({
         ip,
         action: "FAILED_LOGIN",
-        reason: blockedUntil ? "Blocked after 5 wrong attempts" : "Wrong admin password",
+        reason: blockedUntil ? "Blocked" : "Wrong admin password",
         attempts: count,
         blockedUntil: blockedUntil ? new Date(blockedUntil) : null,
         userAgent: ua
@@ -213,7 +213,7 @@ app.post("/api/admin/login", async (req, res) => {
 
       return res.status(blockedUntil ? 429 : 401).json({
         error: blockedUntil
-          ? "Too many wrong attempts. Blocked for 1 minute."
+          ? "Blocked"
           : "Invalid admin key",
         attempts: count
       });
