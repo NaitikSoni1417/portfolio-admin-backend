@@ -24,6 +24,7 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.log("❌ Mongo Error:", err.message));
 
 const visitorSchema = new mongoose.Schema({
+  isAdmin: { type: Boolean, default: false },
   ip: String,
   visitorId: String,
   page: String,
@@ -151,7 +152,15 @@ app.post("/api/admin/login", async (req, res) => {
     expiresIn: "7d"
   });
 
-  res.json({ token });
+  const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const adminIp = cleanIp(publicIp || forwardedIp || req.clientIp || req.ip);
+
+    await Visitor.updateMany(
+      { ip: adminIp },
+      { $set: { isAdmin: true } }
+    );
+
+    res.json({ token });
 });
 
 app.post("/api/track", async (req, res) => {
