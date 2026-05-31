@@ -378,23 +378,5 @@ app.delete("/api/admin/messages", auth, async (req, res) => {
   res.json({ success: true });
 });
 
-
-app.post("/api/admin/mark-me", auth, async (req, res) => {
-  try {
-    const { publicIp } = req.body;
-    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const adminIp = cleanIp(publicIp || forwardedIp || req.clientIp || req.ip);
-
-    await Visitor.updateMany(
-      { ip: adminIp },
-      { $set: { isAdmin: true } }
-    );
-
-    res.json({ success: true, adminIp });
-  } catch (err) {
-    res.status(500).json({ error: "Admin mark failed" });
-  }
-});
-
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
