@@ -180,10 +180,22 @@ app.post("/api/track", async (req, res) => {
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
     const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
 
+    let geo = {};
+    try {
+      const geoRes = await fetch(`https://ipwho.is/${ip}`);
+      geo = await geoRes.json();
+    } catch {}
+
     await Visitor.create({
       ip,
       visitorId: ip,
       page: req.body.page || "/",
+      city: geo.city || "Unknown",
+      region: geo.region || "Unknown",
+      country: geo.country || "Unknown",
+      isp: geo.connection?.isp || "Unknown",
+      lat: geo.latitude || null,
+      lng: geo.longitude || null,
       browser: req.body.browser || "Unknown",
       os: req.body.os || "Unknown",
       device: req.body.device || "Desktop",
