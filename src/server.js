@@ -504,7 +504,7 @@ app.delete("/api/admin/messages", auth, async (req, res) => {
 
 app.get("/api/admin/security-logs", auth, async (req, res) => {
   try {
-    const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100);
+    const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100).lean();
     res.json(logs);
   } catch {
     res.status(500).json({ error: "Security logs failed" });
@@ -514,7 +514,7 @@ app.get("/api/admin/security-logs", auth, async (req, res) => {
 
 app.get("/api/admin/advanced-analytics", auth, async (req, res) => {
   try {
-    const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100);
+    const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100).lean();
 
     const failedLoginCount = await SecurityLog.countDocuments({
       action: "FAILED_LOGIN"
