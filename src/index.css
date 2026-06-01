@@ -1,0 +1,291 @@
+@import "tailwindcss";
+
+body {
+  font-family: 'Poppins', sans-serif;
+}
+
+h1, h2 {
+  font-family: 'Roboto', sans-serif;
+}
+
+@layer utilities { 
+  .gradient {
+    background: linear-gradient(-45deg, #302b63, #00bf8f, #1cd8d2);
+  }
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #1cd8d2, #00bf8f);
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00ffcc, #00bf8f);
+}
+button,
+a,
+[role="button"] {
+  cursor: pointer;
+}
+
+button {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+button:hover {
+  transform: translateY(-2px) scale(1.015);
+}
+
+button:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+#admin-dashboard-root[data-theme="dark"] {
+  background: #020617 !important;
+  color: #ffffff !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .bg-white,
+#admin-dashboard-root[data-theme="dark"] .bg-white\/80,
+#admin-dashboard-root[data-theme="dark"] .bg-slate-50,
+#admin-dashboard-root[data-theme="dark"] .bg-slate-100 {
+  background-color: rgba(15, 23, 42, 0.88) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .text-slate-950,
+#admin-dashboard-root[data-theme="dark"] .text-slate-900,
+#admin-dashboard-root[data-theme="dark"] .text-slate-800,
+#admin-dashboard-root[data-theme="dark"] .text-slate-700 {
+  color: #ffffff !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .text-slate-500,
+#admin-dashboard-root[data-theme="dark"] .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] input,
+#admin-dashboard-root[data-theme="dark"] textarea {
+  background: rgba(2, 6, 23, 0.55) !important;
+  color: white !important;
+  border-color: rgba(255,255,255,0.14) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .admin-floating-theme-button {
+  background: #ffffff !important;
+  color: #020617 !important;
+}
+
+/* ===== Premium Admin Theme Polish ===== */
+
+#admin-dashboard-root {
+  transition: background 0.35s ease, color 0.35s ease;
+}
+
+#admin-dashboard-root[data-theme="light"] {
+  background:
+    radial-gradient(circle at top left, rgba(219, 234, 254, 0.9), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(204, 251, 241, 0.75), transparent 32%),
+    #f6f8ff !important;
+  color: #0f172a !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] {
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.18), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.14), transparent 34%),
+    #020617 !important;
+  color: #ffffff !important;
+}
+
+/* Light mode premium cards */
+#admin-dashboard-root[data-theme="light"] .bg-white,
+#admin-dashboard-root[data-theme="light"] .bg-white\/80 {
+  background: rgba(255, 255, 255, 0.86) !important;
+  backdrop-filter: blur(22px) !important;
+  border-color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* Dark mode premium glass */
+#admin-dashboard-root[data-theme="dark"] .bg-white,
+#admin-dashboard-root[data-theme="dark"] .bg-white\/80,
+#admin-dashboard-root[data-theme="dark"] .bg-slate-50,
+#admin-dashboard-root[data-theme="dark"] .bg-slate-100 {
+  background: rgba(15, 23, 42, 0.78) !important;
+  backdrop-filter: blur(22px) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Dark text correction */
+#admin-dashboard-root[data-theme="dark"] .text-slate-950,
+#admin-dashboard-root[data-theme="dark"] .text-slate-900,
+#admin-dashboard-root[data-theme="dark"] .text-slate-800,
+#admin-dashboard-root[data-theme="dark"] .text-slate-700 {
+  color: #ffffff !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .text-slate-600,
+#admin-dashboard-root[data-theme="dark"] .text-slate-500,
+#admin-dashboard-root[data-theme="dark"] .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+/* Sidebar/menu dark hover */
+#admin-dashboard-root[data-theme="dark"] aside {
+  background: rgba(2, 6, 23, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] button:hover {
+  box-shadow: 0 18px 40px rgba(34, 211, 238, 0.12) !important;
+}
+
+/* Floating theme button */
+#admin-dashboard-root .admin-floating-theme-button {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .admin-floating-theme-button {
+  background: #ffffff !important;
+  color: #020617 !important;
+}
+
+/* Inputs */
+#admin-dashboard-root[data-theme="dark"] input,
+#admin-dashboard-root[data-theme="dark"] textarea {
+  background: rgba(2, 6, 23, 0.6) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+#admin-dashboard-root[data-theme="light"] input,
+#admin-dashboard-root[data-theme="light"] textarea {
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Tables */
+#admin-dashboard-root[data-theme="dark"] table tr {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] table th {
+  color: #94a3b8 !important;
+}
+
+/* Dark theme final polish */
+#admin-dashboard-root[data-theme="dark"] {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(34, 211, 238, 0.12), transparent 28%),
+    radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.10), transparent 30%),
+    #050816 !important;
+}
+
+/* Cards */
+#admin-dashboard-root[data-theme="dark"] section > div,
+#admin-dashboard-root[data-theme="dark"] main > div,
+#admin-dashboard-root[data-theme="dark"] .rounded-\[2rem\] {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+/* White tooltip fix */
+#admin-dashboard-root[data-theme="dark"] .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
+  border-radius: 18px !important;
+  color: white !important;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.35) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .recharts-tooltip-item,
+#admin-dashboard-root[data-theme="dark"] .recharts-tooltip-label {
+  color: white !important;
+}
+
+/* Chart grid softer */
+#admin-dashboard-root[data-theme="dark"] .recharts-cartesian-grid line {
+  stroke: rgba(148, 163, 184, 0.18) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .recharts-text {
+  fill: #94a3b8 !important;
+}
+
+/* Sidebar better */
+#admin-dashboard-root[data-theme="dark"] aside {
+  background: rgba(8, 13, 28, 0.94) !important;
+  box-shadow: 20px 0 80px rgba(0,0,0,0.25) !important;
+}
+
+/* Active menu */
+#admin-dashboard-root[data-theme="dark"] aside button.bg-slate-950 {
+  background: linear-gradient(135deg, #020617, #0f172a) !important;
+  border: 1px solid rgba(34, 211, 238, 0.15) !important;
+}
+
+/* Live badge */
+#admin-dashboard-root[data-theme="dark"] .bg-emerald-50 {
+  background: rgba(16, 185, 129, 0.14) !important;
+  color: #6ee7b7 !important;
+}
+
+/* Floating light button */
+#admin-dashboard-root[data-theme="dark"] .admin-floating-theme-button {
+  background: linear-gradient(135deg, #ffffff, #e2e8f0) !important;
+  color: #020617 !important;
+  box-shadow: 0 20px 60px rgba(255,255,255,0.18) !important;
+}
+
+/* Premium Admin Dark Theme */
+#admin-dashboard-root[data-theme="dark"] {
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.13), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.10), transparent 34%),
+    #020617 !important;
+  color: #fff !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .bg-white,
+#admin-dashboard-root[data-theme="dark"] .bg-slate-50,
+#admin-dashboard-root[data-theme="dark"] .bg-slate-100 {
+  background: rgba(15, 23, 42, 0.86) !important;
+  color: #fff !important;
+  border-color: rgba(255,255,255,0.12) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .text-slate-950,
+#admin-dashboard-root[data-theme="dark"] .text-slate-900,
+#admin-dashboard-root[data-theme="dark"] .text-slate-800,
+#admin-dashboard-root[data-theme="dark"] .text-slate-700 {
+  color: #fff !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .text-slate-500,
+#admin-dashboard-root[data-theme="dark"] .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] input,
+#admin-dashboard-root[data-theme="dark"] textarea {
+  background: rgba(2, 6, 23, 0.65) !important;
+  color: #fff !important;
+  border-color: rgba(255,255,255,0.14) !important;
+}
+
+#admin-dashboard-root[data-theme="dark"] .PREMIUM_THEME_TOGGLE_BTN {
+  background: rgba(255,255,255,0.10) !important;
+  color: white !important;
+  border-color: rgba(255,255,255,0.14) !important;
+}
