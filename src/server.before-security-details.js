@@ -38,16 +38,6 @@ const visitorSchema = new mongoose.Schema({
   lat: Number,
   lng: Number,
   userAgent: String,
-  attemptedKey: String,
-  city: String,
-  region: String,
-  country: String,
-  isp: String,
-  lat: Number,
-  lng: Number,
-  browser: String,
-  os: String,
-  device: String,
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -81,16 +71,6 @@ const securityLogSchema = new mongoose.Schema({
   attempts: Number,
   blockedUntil: Date,
   userAgent: String,
-  attemptedKey: String,
-  city: String,
-  region: String,
-  country: String,
-  isp: String,
-  lat: Number,
-  lng: Number,
-  browser: String,
-  os: String,
-  device: String,
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -229,56 +209,11 @@ app.post("/api/track", async (req, res) => {
   }
 });
 
-
-async function getSecurityContext(req, ip, key = "") {
-  let geo = {};
-  try {
-    const r = await fetch(`https://ipapi.co/${ip}/json/`);
-    geo = await r.json();
-  } catch {}
-
-  const ua = req.headers["user-agent"] || "";
-  const browser =
-    ua.includes("Edg") ? "Edge" :
-    ua.includes("Chrome") ? "Chrome" :
-    ua.includes("Safari") ? "Safari" :
-    ua.includes("Firefox") ? "Firefox" : "Unknown";
-
-  const os =
-    ua.includes("Mac") ? "macOS" :
-    ua.includes("Windows") ? "Windows" :
-    ua.includes("Android") ? "Android" :
-    ua.includes("iPhone") || ua.includes("iPad") ? "iOS" : "Unknown";
-
-  const device = /Mobi|Android|iPhone|iPad/i.test(ua) ? "mobile" : "Desktop";
-
-  const maskedKey =
-    key && key.length > 2
-      ? `${key.slice(0, 2)}${"*".repeat(Math.max(2, key.length - 4))}${key.slice(-2)}`
-      : "***";
-
-  return {
-    userAgent: ua,
-    attemptedKey: maskedKey,
-    city: geo.city || "Unknown",
-    region: geo.region || "Unknown",
-    country: geo.country_name || geo.country || "Unknown",
-    isp: geo.org || "Unknown",
-    lat: geo.latitude || null,
-    lng: geo.longitude || null,
-    browser,
-    os,
-    device,
-  };
-}
-
-
 app.post("/api/admin/login", async (req, res) => {
   try {
     const { key, publicIp } = req.body;
     const ip = getClientIp(req, publicIp);
     const ua = req.headers["user-agent"] || "";
-    const sec = await getSecurityContext(req, ip, key);
 
     if (isBlocked(ip)) {
       const item = loginAttempts.get(ip);
@@ -308,8 +243,7 @@ app.post("/api/admin/login", async (req, res) => {
         reason: blockedUntil ? "Blocked" : "Wrong admin password",
         attempts: count,
         blockedUntil: blockedUntil ? new Date(blockedUntil) : null,
-        userAgent: ua,
-        ...sec
+        userAgent: ua
       });
 
       return res.status(blockedUntil ? 429 : 401).json({
@@ -331,8 +265,7 @@ app.post("/api/admin/login", async (req, res) => {
       action: "SUCCESS_LOGIN",
       reason: "Admin logged in successfully",
       attempts: 0,
-      userAgent: ua,
-      ...sec
+      userAgent: ua
     });
 
     res.json({ token });
