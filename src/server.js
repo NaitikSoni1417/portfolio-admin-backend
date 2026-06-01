@@ -174,6 +174,29 @@ app.get("/", (req, res) => {
   res.send("Portfolio Admin Backend Running");
 });
 
+
+app.post("/api/track", async (req, res) => {
+  try {
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
+
+    await Visitor.create({
+      ip,
+      visitorId: ip,
+      page: req.body.page || "/",
+      browser: req.body.browser || "Unknown",
+      os: req.body.os || "Unknown",
+      device: req.body.device || "Desktop",
+      userAgent: req.headers["user-agent"] || "",
+      createdAt: new Date()
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Tracking failed" });
+  }
+});
+
 app.post("/api/admin/login", async (req, res) => {
   try {
     const { key, publicIp } = req.body;
