@@ -244,8 +244,13 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
   const totalMessages = await Message.countDocuments();
   const unreadMessages = await Message.countDocuments({ status: "Unread" });
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  // India timezone based today start
+  const now = new Date();
+  const indiaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  indiaNow.setHours(0, 0, 0, 0);
+
+  // Convert India midnight back to UTC for MongoDB Date comparison
+  const todayStart = new Date(indiaNow.getTime() - 5.5 * 60 * 60 * 1000);
 
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
