@@ -178,7 +178,7 @@ app.get("/", (req, res) => {
 app.post("/api/track", async (req, res) => {
   try {
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
+    const ip = cleanIp(req.body.ip || forwardedIp || req.clientIp || req.ip);
 
     let geo = {};
     try {
@@ -190,12 +190,12 @@ app.post("/api/track", async (req, res) => {
       ip,
       visitorId: ip,
       page: req.body.page || "/",
-      city: geo.city || "Unknown",
-      region: geo.region || "Unknown",
-      country: geo.country || "Unknown",
-      isp: geo.connection?.isp || "Unknown",
-      lat: geo.latitude || null,
-      lng: geo.longitude || null,
+      city: req.body.city || geo.city || "Unknown",
+      region: req.body.region || geo.region || "Unknown",
+      country: req.body.country || geo.country || "Unknown",
+      isp: req.body.isp || geo.connection?.isp || "Unknown",
+      lat: req.body.lat || geo.latitude || null,
+      lng: req.body.lng || geo.longitude || null,
       browser: req.body.browser || "Unknown",
       os: req.body.os || "Unknown",
       device: req.body.device || "Desktop",
