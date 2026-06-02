@@ -693,6 +693,7 @@ If you did NOT make this change, immediately review your admin security logs and
             token={token}
             loadDashboard={loadDashboard}
             loadAdvancedAnalytics={loadAdvancedAnalytics}
+            theme={theme}
           />
         )}
 
@@ -803,7 +804,8 @@ function VisitorBox({ title, value }) {
 
 
 
-function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics }) {
+function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics, theme }) {
+  const isDark = theme === "dark";
   const [messages, setMessages] = useState([
     {
       role: "ai",
@@ -855,12 +857,20 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
   };
 
   return (
-    <section className="relative -mt-4 min-h-[calc(100vh-40px)] overflow-hidden rounded-[34px] bg-[#050816] p-5 text-white shadow-2xl">
+    <section className={`relative -mt-4 min-h-[calc(100vh-40px)] overflow-hidden rounded-[34px] p-5 shadow-2xl ${
+      isDark
+        ? "bg-[#050816] text-white"
+        : "bg-white/75 text-slate-950 ring-1 ring-slate-200 backdrop-blur-2xl"
+    }`}>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(34,211,238,0.22),transparent_28%),radial-gradient(circle_at_85%_20%,rgba(168,85,247,0.24),transparent_30%),radial-gradient(circle_at_50%_90%,rgba(59,130,246,0.16),transparent_34%)]" />
 
       <div className="relative z-10 grid gap-5 xl:grid-cols-[1fr_330px]">
-        <div className="flex min-h-[760px] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-white/[0.055] backdrop-blur-2xl">
-          <div className="border-b border-white/10 p-7">
+        <div className={`flex min-h-[760px] flex-col overflow-hidden rounded-[30px] backdrop-blur-2xl ${
+            isDark
+              ? "border border-white/10 bg-white/[0.055]"
+              : "border border-white/70 bg-white/70 shadow-xl"
+          }`}>
+          <div className={`border-b p-7 ${isDark ? "border-white/10" : "border-slate-200/70"}`}>
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-5">
                 <div className="flex h-20 w-20 items-center justify-center rounded-[26px] bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 text-4xl shadow-[0_0_45px_rgba(34,211,238,0.35)]">
@@ -873,7 +883,7 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
                   <h2 className="mt-2 text-4xl font-black tracking-tight">
                     NS.ai Intelligence Core
                   </h2>
-                  <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-300">
+                  <p className={`mt-2 max-w-2xl text-sm font-semibold ${isDark ? "text-slate-300" : "text-slate-600"}` }>
                     Real-time AI assistant for visitors, messages, traffic, security logs and growth.
                   </p>
                 </div>
@@ -900,7 +910,7 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
                 <div className={`max-w-[760px] rounded-[24px] px-5 py-4 text-[15px] font-semibold leading-relaxed ${
                   m.role === "user"
                     ? "bg-gradient-to-br from-cyan-300 via-blue-400 to-violet-500 text-slate-950 shadow-[0_0_28px_rgba(34,211,238,0.25)]"
-                    : "border border-white/10 bg-[#101827]/85 text-slate-100"
+                    : isDark ? "border border-white/10 bg-[#101827]/85 text-slate-100" : "border border-slate-200 bg-white/80 text-slate-800 shadow-sm"
                 }`}>
                   <p className="whitespace-pre-wrap">{m.text}</p>
                 </div>
@@ -917,8 +927,14 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
             )}
           </div>
 
-          <div className="border-t border-white/10 bg-[#07111f]/95 p-5 backdrop-blur-2xl">
-            <div className="relative flex items-center gap-3 rounded-[999px] border border-cyan-300/50 bg-white/[0.07] p-2 shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_0_30px_rgba(255,255,255,0.04)]">
+          <div className={`border-t p-5 backdrop-blur-2xl ${
+            isDark ? "border-white/10 bg-[#07111f]/95" : "border-slate-200 bg-white/70"
+          }`}>
+            <div className={`relative flex items-center gap-3 rounded-[999px] border p-2 ${
+              isDark
+                ? "border-cyan-300/50 bg-white/[0.07] shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_0_30px_rgba(255,255,255,0.04)]"
+                : "border-cyan-300/60 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.12)]"
+            }`}>
               <div className="pointer-events-none absolute inset-0 rounded-[999px] bg-gradient-to-r from-cyan-400/10 via-transparent to-violet-500/10" />
 
               <input
@@ -926,7 +942,9 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && askAI()}
                 placeholder="Ask NS.ai anything about your admin panel..."
-                className="relative z-10 flex-1 rounded-full bg-transparent px-6 py-5 text-[15px] font-bold text-white outline-none placeholder:text-slate-400"
+                className={`relative z-10 flex-1 rounded-full bg-transparent px-6 py-5 text-[15px] font-bold outline-none placeholder:text-slate-400 ${
+                  isDark ? "text-white" : "text-slate-950"
+                }`}
               />
 
               <button
@@ -941,14 +959,18 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
         </div>
 
         <aside className="space-y-5">
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.06] p-5 backdrop-blur-2xl">
+          <div className={`rounded-[28px] p-5 backdrop-blur-2xl ${
+            isDark ? "border border-white/10 bg-white/[0.06]" : "border border-white/70 bg-white/70 shadow-xl"
+          }`}>
             <h3 className="text-xl font-black">Premium Questions</h3>
             <div className="mt-5 space-y-3">
               {prompts.map((q) => (
                 <button
                   key={q}
                   onClick={() => askAI(q)}
-                  className="w-full rounded-2xl border border-white/10 bg-[#111827]/75 p-4 text-left text-sm font-bold text-slate-100 transition hover:border-cyan-300/60 hover:bg-cyan-300/10"
+                  className={`w-full rounded-2xl border p-4 text-left text-sm font-bold transition hover:border-cyan-300/60 hover:bg-cyan-300/10 ${
+                    isDark ? "border-white/10 bg-[#111827]/75 text-slate-100" : "border-slate-200 bg-white/80 text-slate-800"
+                  }`}
                 >
                   ✦ {q}
                 </button>
@@ -956,12 +978,20 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.06] p-5 backdrop-blur-2xl">
+          <div className={`rounded-[28px] p-5 backdrop-blur-2xl ${
+            isDark ? "border border-white/10 bg-white/[0.06]" : "border border-white/70 bg-white/70 shadow-xl"
+          }`}>
             <h3 className="text-xl font-black">Quick Actions</h3>
             <div className="mt-5 grid gap-3">
-              <button onClick={() => askAI("Generate a professional daily report.")} className="rounded-2xl bg-white/[0.07] p-4 text-left font-black hover:bg-cyan-300/10">📄 Generate Report</button>
-              <button onClick={() => askAI("Find recruiters and hot leads from today's data.")} className="rounded-2xl bg-white/[0.07] p-4 text-left font-black hover:bg-cyan-300/10">🎯 Find Hot Leads</button>
-              <button onClick={() => askAI("Run a full security audit of admin panel logs.")} className="rounded-2xl bg-white/[0.07] p-4 text-left font-black hover:bg-cyan-300/10">🛡 Security Audit</button>
+              <button onClick={() => askAI("Generate a professional daily report.")} className={`rounded-2xl p-4 text-left font-black hover:bg-cyan-300/10 ${
+                  isDark ? "bg-white/[0.07] text-white" : "bg-white/80 text-slate-800 shadow-sm"
+                }`}>📄 Generate Report</button>
+              <button onClick={() => askAI("Find recruiters and hot leads from today's data.")} className={`rounded-2xl p-4 text-left font-black hover:bg-cyan-300/10 ${
+                  isDark ? "bg-white/[0.07] text-white" : "bg-white/80 text-slate-800 shadow-sm"
+                }`}>🎯 Find Hot Leads</button>
+              <button onClick={() => askAI("Run a full security audit of admin panel logs.")} className={`rounded-2xl p-4 text-left font-black hover:bg-cyan-300/10 ${
+                  isDark ? "bg-white/[0.07] text-white" : "bg-white/80 text-slate-800 shadow-sm"
+                }`}>🛡 Security Audit</button>
             </div>
           </div>
         </aside>
