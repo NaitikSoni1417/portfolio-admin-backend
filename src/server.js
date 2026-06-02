@@ -910,8 +910,8 @@ async function sendDailyAdminReport() {
 
       <div style="background:radial-gradient(circle at 10% 0%,#22d3ee44,transparent 28%),radial-gradient(circle at 88% 8%,#8b5cf655,transparent 35%),linear-gradient(135deg,#020617,#0b1120 55%,#0f2f3f);border-radius:36px;padding:38px;color:white;box-shadow:0 30px 90px rgba(34,211,238,.18);border:1px solid rgba(103,232,249,.18)">
         <div style="font-size:12px;letter-spacing:5px;color:#67e8f9;font-weight:1000">REAL AI ADMIN AGENT</div>
-        <h1 style="margin:12px 0 10px;font-size:42px;line-height:1.05">NS.ai Executive SaaS Report V3</h1>
-        <p style="margin:0;color:#cbd5e1;font-size:16px;line-height:1.6">Premium portfolio intelligence report for Naitik Soni.</p>
+        <h1 style="margin:12px 0 10px;font-size:42px;line-height:1.05">NS.ai | Executive Portfolio Intelligence Report</h1>
+        <p style="margin:0;color:#cbd5e1;font-size:16px;line-height:1.6">Advanced analytics, lead intelligence, and security overview for Naitik Soni.</p>
 
         <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:16px;margin-top:26px">
           <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:28px;padding:22px">
