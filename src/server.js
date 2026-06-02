@@ -848,13 +848,18 @@ async function sendDailyAdminReport() {
 
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
     auth: {
       user: process.env.GMAIL_USER,
       pass: String(process.env.GMAIL_APP_PASSWORD || "").replace(/\s/g, ""),
     },
-    connectionTimeout: 15000,
+    tls: {
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
   });
 
   await transporter.sendMail({
