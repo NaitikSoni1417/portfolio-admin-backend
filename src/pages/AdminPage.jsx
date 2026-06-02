@@ -323,6 +323,7 @@ If you did NOT make this change, immediately review your admin security logs and
     ["Security Logs", <FiShield />],
     ["Devices", <FiSmartphone />],
     ["Earth View", <FiGlobe />],
+    ["NS.ai", <FiActivity />],
     ["Settings", <FiShield />],
   ];
 
@@ -679,6 +680,16 @@ If you did NOT make this change, immediately review your admin security logs and
           </section>
         )}
 
+        {active === "NS.ai" && (
+          <NSAIChat
+            data={data}
+            security={advancedAnalytics}
+            token={token}
+            loadDashboard={loadDashboard}
+            loadAdvancedAnalytics={loadAdvancedAnalytics}
+          />
+        )}
+
         {active === "Earth View" && (
           <section className="mt-6">
             <EarthView visitors={data?.recentVisitors || []} />
@@ -778,6 +789,163 @@ function VisitorBox({ title, value }) {
         {value}
       </p>
     </div>
+  );
+}
+
+
+
+function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics }) {
+  const [messages, setMessages] = useState([
+    {
+      role: "ai",
+      text: "Hi Naitik, I am NS.ai — your real AI admin agent. Ask me about visitors, traffic, messages, security logs, suspicious IPs, website health, or growth."
+    }
+  ]);
+  const [input, setInput] = useState("");
+  const [thinking, setThinking] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadDashboard?.();
+      loadAdvancedAnalytics?.();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const prompts = [
+    "What is my website growth today?",
+    "Did anyone try to access my admin panel today?",
+    "Show me suspicious IP activity.",
+    "What was the last message I received?",
+    "Summarize today's traffic like a CEO report.",
+    "Which country and city is most active?",
+    "Is my website working properly?",
+    "Find high-value leads from messages.",
+    "Analyze visitor device and browser trends.",
+    "Give me a security risk score for today.",
+    "Which visitor looks like a recruiter?",
+    "Which visitor looks like a potential client?",
+    "Give me a 5-point action plan for today.",
+    "Summarize unread messages.",
+    "Explain my admin security logs.",
+    "What should I improve on my portfolio?",
+    "Detect abnormal visitor behavior.",
+    "Give me a professional daily report.",
+    "What is the traffic quality today?",
+    "Tell me the most important thing right now."
+  ];
+
+  const askAI = async (q = input) => {
+    if (!q.trim()) return;
+
+    const userMsg = { role: "user", text: q };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setThinking(true);
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/ns-ai`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          question: q,
+          dashboard: data,
+          security,
+        }),
+      });
+
+      const result = await res.json();
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: result.answer || result.error || "NS.ai could not answer right now."
+        }
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "ai", text: "NS.ai connection failed. Check backend Render deploy and GEMINI_API_KEY." }
+      ]);
+    } finally {
+      setThinking(false);
+    }
+  };
+
+  return (
+    <section className="mt-6 overflow-hidden rounded-[2.3rem] border border-slate-800 bg-[#020617] text-white shadow-2xl">
+      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-blue-950 to-slate-950 p-7">
+        <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300">
+          REAL AI ADMIN AGENT
+        </p>
+        <h2 className="mt-3 text-4xl font-black">NS.ai Command Chat</h2>
+        <p className="mt-2 max-w-3xl font-semibold text-slate-300">
+          Ask in Gujarati, Hindi, or English. NS.ai analyzes your admin panel every 5 seconds using visitors, messages, traffic, and security logs.
+        </p>
+      </div>
+
+      <div className="grid gap-0 xl:grid-cols-[1fr_360px]">
+        <div className="flex h-[650px] flex-col">
+          <div className="flex-1 space-y-5 overflow-y-auto p-6">
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[82%] rounded-[1.5rem] px-5 py-4 text-sm font-semibold leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-cyan-400 text-slate-950"
+                    : "border border-white/10 bg-white/[0.06] text-slate-100"
+                }`}>
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                </div>
+              </div>
+            ))}
+
+            {thinking && (
+              <div className="w-fit rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-4 text-sm font-black text-cyan-300">
+                NS.ai analyzing live admin data...
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-white/10 p-5">
+            <div className="flex gap-3">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && askAI()}
+                placeholder="Ask NS.ai anything about your admin panel..."
+                className="flex-1 rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-4 font-semibold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300"
+              />
+              <button
+                onClick={() => askAI()}
+                disabled={thinking}
+                className="rounded-2xl bg-cyan-400 px-6 py-4 font-black text-slate-950 disabled:opacity-50"
+              >
+                Ask
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <aside className="border-l border-white/10 bg-white/[0.035] p-5">
+          <h3 className="text-lg font-black">Premium Questions</h3>
+          <div className="mt-4 max-h-[580px] space-y-3 overflow-y-auto pr-1">
+            {prompts.map((q) => (
+              <button
+                key={q}
+                onClick={() => askAI(q)}
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-left text-sm font-bold text-slate-200 transition hover:border-cyan-300/50 hover:bg-cyan-300/10"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </section>
   );
 }
 
