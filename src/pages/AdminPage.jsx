@@ -802,6 +802,7 @@ function VisitorBox({ title, value }) {
 
 
 
+
 function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics }) {
   const [messages, setMessages] = useState([
     {
@@ -821,12 +822,14 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
   }, []);
 
   const prompts = [
-    ["🧊", "What is my website growth today?"],
-    ["🟣", "Did anyone try to access my admin panel today?"],
-    ["🔴", "Show me suspicious IP activity."],
-    ["🟢", "What was the last message I received?"],
-    ["🟡", "Summarize today's traffic like a CEO report."],
-    ["🌐", "Which country and city is most active?"],
+    "What is my website growth today?",
+    "Did anyone try to access my admin panel today?",
+    "Show me suspicious IP activity.",
+    "What was the last message I received?",
+    "Summarize today's traffic like a CEO report.",
+    "Which country and city is most active?",
+    "Is my website working properly?",
+    "Find high-value leads from messages.",
   ];
 
   const askAI = async (q = input) => {
@@ -852,136 +855,110 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
   };
 
   return (
-    <section className="relative -mt-2 min-h-[calc(100vh-40px)] overflow-hidden rounded-[2rem] border border-cyan-400/20 bg-[#040712] p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.55)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_80%_20%,rgba(168,85,247,0.18),transparent_32%),radial-gradient(circle_at_55%_80%,rgba(59,130,246,0.12),transparent_35%)]" />
+    <section className="relative -mt-4 min-h-[calc(100vh-40px)] overflow-hidden rounded-[34px] bg-[#050816] p-5 text-white shadow-2xl">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(34,211,238,0.22),transparent_28%),radial-gradient(circle_at_85%_20%,rgba(168,85,247,0.24),transparent_30%),radial-gradient(circle_at_50%_90%,rgba(59,130,246,0.16),transparent_34%)]" />
 
-      <div className="relative z-10 grid gap-5 xl:grid-cols-[1fr_350px]">
-        <div className="space-y-5">
-          <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06] p-7 backdrop-blur-2xl">
-            <div className="absolute right-0 top-0 h-full w-72 bg-[radial-gradient(circle,rgba(34,211,238,0.25),transparent_60%)]" />
-
-            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="relative z-10 grid gap-5 xl:grid-cols-[1fr_330px]">
+        <div className="flex min-h-[760px] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-white/[0.055] backdrop-blur-2xl">
+          <div className="border-b border-white/10 p-7">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-5">
-                <div className="flex h-24 w-24 items-center justify-center rounded-[2rem] bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 text-5xl shadow-[0_0_45px_rgba(34,211,238,0.35)]">
+                <div className="flex h-20 w-20 items-center justify-center rounded-[26px] bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 text-4xl shadow-[0_0_45px_rgba(34,211,238,0.35)]">
                   ✦
                 </div>
-
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.35em] text-cyan-300">
                     REAL AI ADMIN AGENT
                   </p>
                   <h2 className="mt-2 text-4xl font-black tracking-tight">
-                    <span className="bg-gradient-to-r from-cyan-300 via-blue-300 to-violet-300 bg-clip-text text-transparent">
-                      NS.ai
-                    </span>{" "}
-                    Intelligence Core
+                    NS.ai Intelligence Core
                   </h2>
-                  <p className="mt-3 max-w-2xl text-[15px] font-semibold leading-relaxed text-slate-300">
-                    Real-time AI assistant analyzing visitors, messages, traffic, security logs and growth every 5 seconds.
+                  <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-300">
+                    Real-time AI assistant for visitors, messages, traffic, security logs and growth.
                   </p>
-
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <NSBadge text="AI ONLINE" />
-                    <NSBadge text="Live Context" />
-                    <NSBadge text="Auto Refresh: 5 sec" />
-                    <NSBadge text="Memory: Active" />
-                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <NSStat label="Visitors" value={data?.totalVisitors || 0} />
-                <NSStat label="Today Views" value={data?.todayViews || 0} />
-                <NSStat label="Active Sessions" value={data?.activeSessions || 0} />
-                <NSStat label="Messages" value={data?.totalMessages || 0} />
+              <div className="flex flex-wrap gap-2">
+                <NSPill text="AI ONLINE" />
+                <NSPill text="5s LIVE CONTEXT" />
+                <NSPill text={`${data?.todayViews || 0} VIEWS TODAY`} />
+                <NSPill text={`${security?.failedLoginCount || 0} SECURITY EVENTS`} />
               </div>
             </div>
           </div>
 
-          <div className="relative flex h-[610px] flex-col overflow-hidden rounded-[2rem] border border-violet-400/30 bg-white/[0.045] backdrop-blur-2xl shadow-[0_0_70px_rgba(139,92,246,0.14)]">
-            <div className="flex-1 space-y-6 overflow-y-auto p-6 ns-ai-scroll">
-              {messages.map((m, i) => (
-                <div key={i} className={`flex gap-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  {m.role === "ai" && (
-                    <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-600 text-xl shadow-[0_0_28px_rgba(34,211,238,0.3)]">
-                      ✦
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="mb-2 text-xs font-black text-slate-400">
-                      {m.role === "ai" ? "NS.ai" : "You"}
-                    </p>
-                    <div className={`max-w-[760px] rounded-[1.5rem] px-5 py-4 text-[15px] font-semibold leading-relaxed shadow-xl ${
-                      m.role === "user"
-                        ? "bg-gradient-to-br from-violet-500 to-cyan-400 text-white shadow-cyan-500/20"
-                        : "border border-white/10 bg-[#111827]/80 text-slate-100"
-                    }`}>
-                      <p className="whitespace-pre-wrap">{m.text}</p>
-                    </div>
+          <div className="flex-1 space-y-6 overflow-y-auto p-7 ns-ai-scroll">
+            {messages.map((m, i) => (
+              <div key={i} className={`flex gap-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                {m.role === "ai" && (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-600 text-xl">
+                    ✦
                   </div>
-                </div>
-              ))}
+                )}
 
-              {thinking && (
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-600 text-xl">✦</div>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 text-sm font-black text-cyan-300">
-                    NS.ai is scanning visitors, messages and security logs...
-                  </div>
+                <div className={`max-w-[760px] rounded-[24px] px-5 py-4 text-[15px] font-semibold leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-gradient-to-br from-cyan-300 via-blue-400 to-violet-500 text-slate-950 shadow-[0_0_28px_rgba(34,211,238,0.25)]"
+                    : "border border-white/10 bg-[#101827]/85 text-slate-100"
+                }`}>
+                  <p className="whitespace-pre-wrap">{m.text}</p>
                 </div>
-              )}
-            </div>
-
-            <div className="border-t border-white/10 p-5">
-              <div className="flex items-center gap-3 rounded-[1.8rem] border border-cyan-400/60 bg-black/30 p-3 shadow-[0_0_35px_rgba(34,211,238,0.20),0_0_45px_rgba(168,85,247,0.15)]">
-                <button className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-xl">+</button>
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && askAI()}
-                  placeholder="Ask NS.ai anything about your admin panel..."
-                  className="flex-1 bg-transparent px-2 py-4 font-semibold text-white outline-none placeholder:text-slate-500"
-                />
-                <button className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-xl">🎙</button>
-                <button
-                  onClick={() => askAI()}
-                  disabled={thinking}
-                  className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-400 text-2xl shadow-[0_0_35px_rgba(34,211,238,0.35)] transition hover:scale-105 disabled:opacity-50"
-                >
-                  ➤
-                </button>
               </div>
+            ))}
+
+            {thinking && (
+              <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-600">✦</div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 text-sm font-black text-cyan-300">
+                  NS.ai is analyzing live admin data...
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-white/10 bg-black/20 p-5">
+            <div className="flex items-center gap-3 rounded-[26px] border border-cyan-400/40 bg-black/35 p-3 shadow-[0_0_38px_rgba(34,211,238,0.18)]">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && askAI()}
+                placeholder="Ask NS.ai anything about your admin panel..."
+                className="flex-1 bg-transparent px-4 py-4 font-semibold text-white outline-none placeholder:text-slate-500"
+              />
+              <button
+                onClick={() => askAI()}
+                disabled={thinking}
+                className="rounded-2xl bg-gradient-to-br from-cyan-300 to-violet-500 px-7 py-4 font-black text-white shadow-[0_0_30px_rgba(34,211,238,0.28)] transition hover:scale-105 disabled:opacity-50"
+              >
+                Send
+              </button>
             </div>
           </div>
         </div>
 
         <aside className="space-y-5">
-          <div className="rounded-[1.7rem] border border-white/10 bg-white/[0.055] p-5 backdrop-blur-2xl">
-            <h3 className="text-xl font-black">✦ Premium Questions</h3>
+          <div className="rounded-[28px] border border-white/10 bg-white/[0.06] p-5 backdrop-blur-2xl">
+            <h3 className="text-xl font-black">Premium Questions</h3>
             <div className="mt-5 space-y-3">
-              {prompts.map(([icon, q]) => (
+              {prompts.map((q) => (
                 <button
                   key={q}
                   onClick={() => askAI(q)}
-                  className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-[#111827]/70 p-4 text-left text-sm font-bold text-slate-100 transition hover:-translate-y-0.5 hover:border-cyan-300/60 hover:bg-cyan-300/10"
+                  className="w-full rounded-2xl border border-white/10 bg-[#111827]/75 p-4 text-left text-sm font-bold text-slate-100 transition hover:border-cyan-300/60 hover:bg-cyan-300/10"
                 >
-                  <span className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">{icon}</span>
-                    {q}
-                  </span>
-                  <span className="text-slate-500">›</span>
+                  ✦ {q}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="rounded-[1.7rem] border border-white/10 bg-white/[0.055] p-5 backdrop-blur-2xl">
+          <div className="rounded-[28px] border border-white/10 bg-white/[0.06] p-5 backdrop-blur-2xl">
             <h3 className="text-xl font-black">Quick Actions</h3>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <button onClick={() => askAI("Generate a professional daily report.")} className="rounded-2xl bg-white/[0.06] p-4 text-xs font-black hover:bg-cyan-300/10">📄<br />Report</button>
-              <button onClick={() => askAI("Export-ready summary of today data.")} className="rounded-2xl bg-white/[0.06] p-4 text-xs font-black hover:bg-cyan-300/10">⬇<br />Export</button>
-              <button onClick={() => askAI("Run a security audit of my admin panel today.")} className="rounded-2xl bg-white/[0.06] p-4 text-xs font-black hover:bg-cyan-300/10">🛡<br />Audit</button>
+            <div className="mt-5 grid gap-3">
+              <button onClick={() => askAI("Generate a professional daily report.")} className="rounded-2xl bg-white/[0.07] p-4 text-left font-black hover:bg-cyan-300/10">📄 Generate Report</button>
+              <button onClick={() => askAI("Find recruiters and hot leads from today's data.")} className="rounded-2xl bg-white/[0.07] p-4 text-left font-black hover:bg-cyan-300/10">🎯 Find Hot Leads</button>
+              <button onClick={() => askAI("Run a full security audit of admin panel logs.")} className="rounded-2xl bg-white/[0.07] p-4 text-left font-black hover:bg-cyan-300/10">🛡 Security Audit</button>
             </div>
           </div>
         </aside>
@@ -990,20 +967,11 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
   );
 }
 
-function NSBadge({ text }) {
+function NSPill({ text }) {
   return (
-    <span className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-black text-cyan-200">
+    <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-xs font-black text-cyan-200">
       ● {text}
     </span>
-  );
-}
-
-function NSStat({ label, value }) {
-  return (
-    <div className="min-w-[120px] rounded-2xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur">
-      <p className="text-xs font-bold text-slate-400">{label}</p>
-      <h3 className="mt-1 text-3xl font-black">{value}</h3>
-    </div>
   );
 }
 
