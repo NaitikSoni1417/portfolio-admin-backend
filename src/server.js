@@ -846,24 +846,29 @@ async function sendDailyAdminReport() {
     </div>
   </div>`;
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    family: 4,
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: String(process.env.GMAIL_APP_PASSWORD || "").replace(/\s/g, ""),
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY missing");
+  }
+
+  const mailRes = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
     },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000,
+    body: JSON.stringify({
+      from: "NS.ai Reports <onboarding@resend.dev>",
+      to: process.env.REPORT_EMAIL,
+      subject: `NS.ai Daily Report - ${new Date().toLocaleDateString("en-IN")}`,
+      html,
+    }),
   });
 
-  await transporter.sendMail({
-    from: `"NS.ai Reports" <${process.env.GMAIL_USER}>`,
-    to: process.env.REPORT_EMAIL,
-    subject: `NS.ai Daily Report - ${new Date().toLocaleDateString("en-IN")}`,
-    html,
-  });
+  const mailData = await mailRes.json();
+
+  if (!mailRes.ok) {
+    throw new Error(mailData?.message || "Resend email failed");
+  }
 
   console.log("✅ NS.ai daily report email sent");
 }
