@@ -917,19 +917,22 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
             )}
           </div>
 
-          <div className="border-t border-white/10 bg-black/20 p-5">
-            <div className="flex items-center gap-3 rounded-[26px] border border-cyan-400/40 bg-black/35 p-3 shadow-[0_0_38px_rgba(34,211,238,0.18)]">
+          <div className="border-t border-white/10 bg-[#07111f]/95 p-5 backdrop-blur-2xl">
+            <div className="relative flex items-center gap-3 rounded-[999px] border border-cyan-300/50 bg-white/[0.07] p-2 shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_0_30px_rgba(255,255,255,0.04)]">
+              <div className="pointer-events-none absolute inset-0 rounded-[999px] bg-gradient-to-r from-cyan-400/10 via-transparent to-violet-500/10" />
+
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && askAI()}
                 placeholder="Ask NS.ai anything about your admin panel..."
-                className="flex-1 bg-transparent px-4 py-4 font-semibold text-white outline-none placeholder:text-slate-500"
+                className="relative z-10 flex-1 rounded-full bg-transparent px-6 py-5 text-[15px] font-bold text-white outline-none placeholder:text-slate-400"
               />
+
               <button
                 onClick={() => askAI()}
                 disabled={thinking}
-                className="rounded-2xl bg-gradient-to-br from-cyan-300 to-violet-500 px-7 py-4 font-black text-white shadow-[0_0_30px_rgba(34,211,238,0.28)] transition hover:scale-105 disabled:opacity-50"
+                className="relative z-10 rounded-full bg-gradient-to-br from-cyan-300 via-blue-400 to-violet-500 px-8 py-5 font-black text-white shadow-[0_0_28px_rgba(34,211,238,0.35)] transition hover:scale-105 disabled:opacity-50"
               >
                 Send
               </button>
