@@ -406,6 +406,49 @@ app.post("/api/admin/login", async (req, res) => {
   }
 });
 
+
+app.post("/api/contact", async (req, res) => {
+  try {
+    const publicIp = req.body.publicIp || "";
+    const ip = getClientIp(req, publicIp);
+    const geo = await getGeo(ip);
+
+    const ua = req.headers["user-agent"] || req.body.userAgent || "";
+    const parser = new UAParser(ua);
+    const result = parser.getResult();
+
+    const browser = result.browser?.name || req.body.browser || "Unknown";
+    const os = result.os?.name || req.body.os || "Unknown";
+    const device = result.device?.type || "Desktop";
+
+    const msg = await Message.create({
+      name: req.body.name || "Unknown",
+      email: req.body.email || "Unknown",
+      message: req.body.message || "",
+      ip,
+      city: geo.city || "Unknown",
+      region: geo.region || "Unknown",
+      country: geo.country || "Unknown",
+      isp: geo.isp || "Unknown",
+      lat: geo.lat || null,
+      lng: geo.lng || null,
+      browser,
+      os,
+      device,
+      page: req.body.page || "/contact",
+      userAgent: ua,
+      status: "Unread",
+      createdAt: new Date()
+    });
+
+    res.json({ success: true, message: msg });
+  } catch (err) {
+    console.error("Contact save failed:", err.message);
+    res.status(500).json({ error: "Contact save failed" });
+  }
+});
+
+
 app.get("/api/admin/dashboard", auth, async (req, res) => {
   const totalVisitors = await Visitor.countDocuments();
   const totalMessages = await Message.countDocuments();
