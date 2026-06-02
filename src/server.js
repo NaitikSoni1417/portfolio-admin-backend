@@ -699,5 +699,70 @@ app.get("/api/admin/advanced-analytics", auth, async (req, res) => {
   }
 });
 
+
+app.post("/api/admin/ns-ai", auth, async (req, res) => {
+  try {
+    const { question, dashboard, security } = req.body;
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: "GEMINI_API_KEY missing" });
+    }
+
+    const prompt = `
+You are NS.ai, a premium AI admin agent for Naitik Soni's portfolio admin panel.
+Reply in the same language as the user: Gujarati, Hindi, or English.
+
+You can analyze:
+- visitors
+- messages
+- traffic
+- countries/cities
+- devices
+- browsers
+- security logs
+- failed admin login attempts
+- suspicious IPs
+- website health
+
+Be professional, short, powerful, and useful.
+
+Admin dashboard data:
+${JSON.stringify(dashboard || {}, null, 2)}
+
+Security data:
+${JSON.stringify(security || {}, null, 2)}
+
+User question:
+${question}
+`;
+
+    const aiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: prompt }]
+            }
+          ]
+        })
+      }
+    );
+
+    const aiData = await aiRes.json();
+    const answer =
+      aiData?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "NS.ai could not generate a response right now.";
+
+    res.json({ answer });
+  } catch (err) {
+    console.error("NS.ai error:", err.message);
+    res.status(500).json({ error: "NS.ai failed" });
+  }
+});
+
+
 const PORT = process.env.PORT || 5050;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
