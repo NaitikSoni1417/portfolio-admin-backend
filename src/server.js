@@ -847,15 +847,11 @@ async function sendDailyAdminReport() {
   </div>`;
 
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
+    service: "gmail",
+    family: 4,
     auth: {
       user: process.env.GMAIL_USER,
       pass: String(process.env.GMAIL_APP_PASSWORD || "").replace(/\s/g, ""),
-    },
-    tls: {
-      rejectUnauthorized: false,
     },
     connectionTimeout: 30000,
     greetingTimeout: 30000,
