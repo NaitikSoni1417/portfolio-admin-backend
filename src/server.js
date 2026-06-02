@@ -230,12 +230,77 @@ app.post("/api/track", async (req, res) => {
 });
 
 
-async function getSecurityContext(req, ip, key = "") {
-  let geo = {};
+async function lookupIpGeo(ip) {
+  const fallback = {
+    city: "Unknown",
+    region: "Unknown",
+    country: "Unknown",
+    isp: "Unknown",
+    lat: null,
+    lng: null
+  };
+
+  if (!ip || ip === "127.0.0.1" || ip === "localhost") {
+    return {
+      city: "Vadodara",
+      region: "Gujarat",
+      country: "India",
+      isp: "Localhost",
+      lat: 22.3072,
+      lng: 73.1812
+    };
+  }
+
+  try {
+    const r = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,isp,org,as,query`);
+    const d = await r.json();
+    if (d.status === "success") {
+      return {
+        city: d.city || d.regionName || "Unknown",
+        region: d.regionName || "Unknown",
+        country: d.country || "Unknown",
+        isp: d.isp || d.org || d.as || "Unknown",
+        lat: d.lat || null,
+        lng: d.lon || null
+      };
+    }
+  } catch {}
+
+  try {
+    const r = await fetch(`https://ipwho.is/${ip}`);
+    const d = await r.json();
+    if (d.success !== false) {
+      return {
+        city: d.city || "Unknown",
+        region: d.region || "Unknown",
+        country: d.country || "Unknown",
+        isp: d.connection?.isp || d.connection?.org || "Unknown",
+        lat: d.latitude || null,
+        lng: d.longitude || null
+      };
+    }
+  } catch {}
+
   try {
     const r = await fetch(`https://ipapi.co/${ip}/json/`);
-    geo = await r.json();
+    const d = await r.json();
+    if (!d.error) {
+      return {
+        city: d.city || "Unknown",
+        region: d.region || "Unknown",
+        country: d.country_name || d.country || "Unknown",
+        isp: d.org || d.network || "Unknown",
+        lat: d.latitude || null,
+        lng: d.longitude || null
+      };
+    }
   } catch {}
+
+  return fallback;
+}
+
+async function getSecurityContext(req, ip, key = "") {
+  const geo = await lookupIpGeo(ip);
 
   const ua = req.headers["user-agent"] || "";
   const browser =
@@ -262,10 +327,10 @@ async function getSecurityContext(req, ip, key = "") {
     attemptedKey: maskedKey,
     city: geo.city || "Unknown",
     region: geo.region || "Unknown",
-    country: geo.country_name || geo.country || "Unknown",
-    isp: geo.org || "Unknown",
-    lat: geo.latitude || null,
-    lng: geo.longitude || null,
+    country: geo.country || "Unknown",
+    isp: geo.isp || "Unknown",
+    lat: geo.lat || null,
+    lng: geo.lng || null,
     browser,
     os,
     device,
