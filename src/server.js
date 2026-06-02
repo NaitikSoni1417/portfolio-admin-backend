@@ -755,9 +755,8 @@ ${question}
 
       if (!aiRes.ok) {
         console.error("OpenRouter error:", JSON.stringify(aiData, null, 2));
-        return res.status(500).json({
-          error: aiData?.error?.message || "OpenRouter AI failed"
-        });
+        const fallback = `Bhai, AI provider limit issue aavyo che, pan live admin data pramane: aaje ${dashboard?.todayViews || 0} views che, total visitors ${dashboard?.totalVisitors || 0} che, active sessions ${dashboard?.activeSessions || 0} che, messages ${dashboard?.totalMessages || 0} che, ane failed login events ${security?.failedLoginCount || 0} che.`;
+        return res.json({ answer: fallback, fallback: true });
       }
 
       answer = aiData?.choices?.[0]?.message?.content || "";
