@@ -847,11 +847,14 @@ async function sendDailyAdminReport() {
   </div>`;
 
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: {
       user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
+      pass: String(process.env.GMAIL_APP_PASSWORD || "").replace(/\s/g, ""),
     },
+    connectionTimeout: 15000,
   });
 
   await transporter.sendMail({
@@ -869,8 +872,12 @@ app.post("/api/admin/send-daily-report", auth, async (req, res) => {
     await sendDailyAdminReport();
     res.json({ success: true, message: "Daily report sent" });
   } catch (err) {
-    console.error("Daily report error:", err.message);
-    res.status(500).json({ error: "Daily report failed" });
+    console.error("Daily report error:", err);
+    res.status(500).json({
+      error: "Daily report failed",
+      details: err.message || String(err),
+      code: err.code || null,
+    });
   }
 });
 
