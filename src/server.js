@@ -700,31 +700,24 @@ app.get("/api/admin/advanced-analytics", auth, async (req, res) => {
 });
 
 
+
 app.post("/api/admin/ns-ai", auth, async (req, res) => {
   try {
     const { question, dashboard, security } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY missing" });
-    }
-
     const prompt = `
-You are NS.ai, a premium AI admin agent for Naitik Soni's portfolio admin panel.
-Reply in the same language as the user: Gujarati, Hindi, or English.
+You are NS.ai, a premium real AI admin agent for Naitik Soni's portfolio admin panel.
+Reply in the same language as the user: Gujarati, Hindi, Hinglish, or English.
 
-You can analyze:
-- visitors
-- messages
-- traffic
-- countries/cities
-- devices
-- browsers
-- security logs
-- failed admin login attempts
-- suspicious IPs
-- website health
-
-Be professional, short, powerful, and useful.
+Your job:
+- Analyze visitors, traffic, messages, devices, countries, cities, security logs.
+- Answer like a smart admin assistant.
+- Be short, powerful, practical, and professional.
+- If user asks about admin access attempts, use security logs.
+- If user asks growth, use dashboard traffic.
+- If user asks last message, use messages.
+- If user asks website health, use dashboard + security.
+- Never say you cannot access data; use the provided admin data.
 
 Admin dashboard data:
 ${JSON.stringify(dashboard || {}, null, 2)}
@@ -736,39 +729,66 @@ User question:
 ${question}
 `;
 
-    const aiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
+    let answer = "";
+
+    if (process.env.OPENROUTER_API_KEY) {
+      const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://naitiksoni1417.netlify.app",
+          "X-Title": "NS.ai Admin Agent"
+        },
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }]
-            }
-          ]
+          model: "openai/gpt-4o-mini",
+          messages: [
+            { role: "system", content: "You are NS.ai, a real AI admin agent." },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.4,
+          max_tokens: 900
         })
-      }
-    );
-
-    const aiData = await aiRes.json();
-
-    if (!aiRes.ok) {
-      console.error("Gemini API error:", JSON.stringify(aiData, null, 2));
-      return res.status(500).json({
-        error: aiData?.error?.message || "Gemini API failed",
-        details: aiData
       });
+
+      const aiData = await aiRes.json();
+
+      if (!aiRes.ok) {
+        console.error("OpenRouter error:", JSON.stringify(aiData, null, 2));
+        return res.status(500).json({
+          error: aiData?.error?.message || "OpenRouter AI failed"
+        });
+      }
+
+      answer = aiData?.choices?.[0]?.message?.content || "";
     }
 
-    const answer =
-      aiData?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\n") ||
-      "NS.ai could not generate a response right now.";
+    if (!answer && process.env.GEMINI_API_KEY) {
+      const aiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        }
+      );
+
+      const aiData = await aiRes.json();
+      answer = aiData?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\\n") || "";
+    }
+
+    if (!answer) {
+      return res.status(500).json({
+        error: "No AI provider available. Add OPENROUTER_API_KEY or valid GEMINI_API_KEY."
+      });
+    }
 
     res.json({ answer });
   } catch (err) {
     console.error("NS.ai error:", err.message);
-    res.status(500).json({ error: "NS.ai failed" });
+    res.status(500).json({ error: "NS.ai failed: " + err.message });
   }
 });
 
