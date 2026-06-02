@@ -1,6 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import requestIp from "request-ip";
@@ -189,6 +190,19 @@ async function getGeo(ip) {
     };
   }
 }
+
+
+const OWNER_PROFILE = `
+Naitik Soni profile:
+- Name: Naitik Soni
+- Handle: Naitik.infosec / NScyber1417
+- Role: Cybersecurity student, ethical hacker, full stack developer
+- Founder: NS Indian Cyber Army
+- Portfolio owner and admin
+- Studying at SVIT Vasad / GTU
+- Focus: cybersecurity, ethical hacking, bug bounty, secure web apps, portfolio analytics
+- Communication style: friendly Indian Hinglish/Gujarati, like a real assistant, short and useful
+`;
 
 app.get("/", (req, res) => {
   res.send("Portfolio Admin Backend Running");
@@ -790,6 +804,83 @@ ${question}
     res.status(500).json({ error: "NS.ai failed: " + err.message });
   }
 });
+
+
+
+async function sendDailyAdminReport() {
+  if (process.env.DAILY_REPORT_ENABLED !== "true") return;
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD || !process.env.REPORT_EMAIL) return;
+
+  const totalVisitors = await Visitor.countDocuments();
+  const totalMessages = await Message.countDocuments();
+  const unreadMessages = await Message.countDocuments({ status: "Unread" });
+  const failedLoginCount = await SecurityLog.countDocuments({ action: "FAILED_LOGIN" });
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayViews = await Visitor.countDocuments({ createdAt: { $gte: todayStart } });
+
+  const recentMessages = await Message.find().sort({ createdAt: -1 }).limit(5);
+  const recentVisitors = await Visitor.find().sort({ createdAt: -1 }).limit(5);
+
+  const html = `
+  <div style="font-family:Arial,sans-serif;background:#f6f8ff;padding:24px">
+    <div style="max-width:720px;margin:auto;background:white;border-radius:24px;padding:28px;box-shadow:0 18px 50px rgba(15,23,42,.12)">
+      <h1 style="margin:0;color:#020617">NS.ai Daily Portfolio Report</h1>
+      <p style="color:#64748b">Hi Naitik, here is your automated admin report.</p>
+
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:24px 0">
+        <div style="background:#ecfeff;padding:18px;border-radius:18px"><b>Today Views</b><h2>${todayViews}</h2></div>
+        <div style="background:#f0fdf4;padding:18px;border-radius:18px"><b>Total Visitors</b><h2>${totalVisitors}</h2></div>
+        <div style="background:#fff7ed;padding:18px;border-radius:18px"><b>Messages</b><h2>${totalMessages}</h2><small>${unreadMessages} unread</small></div>
+        <div style="background:#fef2f2;padding:18px;border-radius:18px"><b>Failed Logins</b><h2>${failedLoginCount}</h2></div>
+      </div>
+
+      <h3>Recent Visitors</h3>
+      ${recentVisitors.map(v => `<p>🌍 ${v.city || "Unknown"}, ${v.country || "Unknown"} • ${v.browser || "Unknown"} • ${v.page || "/"}</p>`).join("")}
+
+      <h3>Recent Messages</h3>
+      ${recentMessages.map(m => `<p>📩 <b>${m.name || "Unknown"}</b> — ${m.message || ""}</p>`).join("")}
+
+      <p style="margin-top:28px;color:#64748b">Generated automatically by NS.ai • Developed by Naitik Soni</p>
+    </div>
+  </div>`;
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+
+  await transporter.sendMail({
+    from: `"NS.ai Reports" <${process.env.GMAIL_USER}>`,
+    to: process.env.REPORT_EMAIL,
+    subject: `NS.ai Daily Report - ${new Date().toLocaleDateString("en-IN")}`,
+    html,
+  });
+
+  console.log("✅ NS.ai daily report email sent");
+}
+
+app.post("/api/admin/send-daily-report", auth, async (req, res) => {
+  try {
+    await sendDailyAdminReport();
+    res.json({ success: true, message: "Daily report sent" });
+  } catch (err) {
+    console.error("Daily report error:", err.message);
+    res.status(500).json({ error: "Daily report failed" });
+  }
+});
+
+setInterval(() => {
+  const now = new Date();
+  const india = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  if (india.getHours() === 9 && india.getMinutes() === 0) {
+    sendDailyAdminReport().catch((err) => console.error("Auto report failed:", err.message));
+  }
+}, 60 * 1000);
 
 
 const PORT = process.env.PORT || 5050;
