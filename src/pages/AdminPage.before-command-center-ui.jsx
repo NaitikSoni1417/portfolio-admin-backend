@@ -873,80 +873,82 @@ function SecurityLogs({ analytics, reloadSecurity }) {
       </Card>
 
       {selectedIp && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#020617]/90 p-4 backdrop-blur-2xl">
-          <div className="relative max-h-[92vh] w-full max-w-7xl overflow-y-auto saas-modal-scroll rounded-[28px] border border-blue-400/20 bg-[#07111f] text-white shadow-[0_30px_120px_rgba(0,0,0,0.75)]">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_60%_10%,rgba(37,99,235,0.28),transparent_35%),radial-gradient(circle_at_85%_25%,rgba(168,85,247,0.16),transparent_28%)]" />
-
-            <div className="relative z-10 flex items-start justify-between border-b border-white/10 p-7">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xl">
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-[2rem] border border-white/20 bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/90 p-6 backdrop-blur-xl">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">SaaS Security Intelligence</p>
-                <h2 className="mt-3 text-4xl font-black tracking-tight text-white">IP Threat Command Center</h2>
-                <p className="mt-3 flex items-center gap-2 text-lg font-bold text-slate-300">
-                  {selectedIp.ip}
-                  <span className="rounded-lg bg-blue-500/20 px-2 py-1 text-xs text-blue-200">COPY</span>
-                </p>
+                <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-600">SaaS Security Intelligence</p>
+                <h2 className="mt-1 text-2xl font-black text-slate-950">IP Threat Report</h2>
+                <p className="text-sm font-bold text-slate-500">{selectedIp.ip}</p>
               </div>
-
-              <div className="flex gap-3">
-                <button className="rounded-2xl border border-red-400/30 bg-red-500/10 px-5 py-3 font-black text-red-300 hover:bg-red-500/20">
-                  🛡 Block This IP
-                </button>
-                <button
-                  onClick={() => setSelectedIp(null)}
-                  className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 font-black text-white hover:bg-white/20"
-                >
-                  ✕
-                </button>
-              </div>
+              <button
+                onClick={() => setSelectedIp(null)}
+                className="rounded-2xl bg-slate-100 px-4 py-2 font-black text-slate-700 transition hover:bg-red-100 hover:text-red-600"
+              >
+                Close
+              </button>
             </div>
 
-            <div className="relative z-10 grid gap-5 p-7">
-              <div className="grid gap-5 md:grid-cols-4">
-                <CommandStat title="Threat Score" value={selectedIp.riskScore} note={selectedIp.riskScore > 70 ? "High Risk" : selectedIp.riskScore > 35 ? "Medium Risk" : "Low Risk"} danger />
-                <CommandStat title="Total Attempts" value={selectedIp.totalAttempts || selectedIp.logs.length} note="All Time" />
-                <CommandStat title="First Seen" value={selectedIp.firstLog.createdAt ? new Date(selectedIp.firstLog.createdAt).toLocaleDateString() : "Unknown"} note={selectedIp.firstLog.createdAt ? new Date(selectedIp.firstLog.createdAt).toLocaleTimeString() : ""} />
-                <CommandStat title="Last Seen" value={selectedIp.lastLog.createdAt ? new Date(selectedIp.lastLog.createdAt).toLocaleDateString() : "Unknown"} note={selectedIp.lastLog.createdAt ? new Date(selectedIp.lastLog.createdAt).toLocaleTimeString() : ""} />
+            <div className="grid gap-5 p-6 lg:grid-cols-3">
+              <div className="rounded-[2rem] bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-6 text-white shadow-xl lg:col-span-2">
+                <p className="text-sm font-bold text-slate-300">Threat Overview</p>
+                <div className="mt-5 grid gap-4 sm:grid-cols-4">
+                  <SecurityMini title="Events" value={selectedIp.logs.length} />
+                  <SecurityMini title="Failed" value={selectedIp.failed} danger />
+                  <SecurityMini title="Success" value={selectedIp.success} />
+                  <SecurityMini title="Risk" value={`${selectedIp.riskScore}/100`} danger={selectedIp.riskScore > 50} />
+                </div>
+
+                <div className="mt-6">
+                  <div className="mb-2 flex justify-between text-xs font-black uppercase tracking-widest text-slate-300">
+                    <span>Risk Level</span>
+                    <span>{selectedIp.riskScore > 70 ? "High" : selectedIp.riskScore > 35 ? "Medium" : "Low"}</span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full rounded-full ${selectedIp.riskScore > 70 ? "bg-red-500" : selectedIp.riskScore > 35 ? "bg-yellow-400" : "bg-emerald-400"}`}
+                      style={{ width: `${selectedIp.riskScore}%` }}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid gap-5 lg:grid-cols-3">
-                <CommandPanel title="🌍 Location Intelligence">
-                  <CommandRow label="Country" value={selectedIp.lastLog.country || "Unknown"} />
-                  <CommandRow label="City" value={selectedIp.lastLog.city || "Unknown"} />
-                  <CommandRow label="ISP" value={selectedIp.lastLog.isp || "Unknown"} />
-                  <CommandRow label="ASN" value={selectedIp.lastLog.asn || "Unknown"} />
-                </CommandPanel>
-
-                <CommandPanel title="🖥 Device Fingerprint">
-                  <CommandRow label="Device" value={selectedIp.lastLog.device || "Unknown"} />
-                  <CommandRow label="OS" value={selectedIp.lastLog.os || "Unknown"} />
-                  <CommandRow label="Browser" value={selectedIp.lastLog.browser || "Unknown"} />
-                  <CommandRow label="User Agent" value={selectedIp.lastLog.userAgent || "Unknown"} />
-                </CommandPanel>
-
-                <CommandPanel title="⏱ Activity Window">
-                  <CommandRow label="First Attempt" value={selectedIp.firstLog.createdAt ? new Date(selectedIp.firstLog.createdAt).toLocaleString() : "Unknown"} />
-                  <CommandRow label="Last Attempt" value={selectedIp.lastLog.createdAt ? new Date(selectedIp.lastLog.createdAt).toLocaleString() : "Unknown"} />
-                  <CommandRow label="Success" value={selectedIp.success || 0} />
-                  <CommandRow label="Failed" value={selectedIp.failed || 0} />
-                </CommandPanel>
+              <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
+                <h3 className="text-lg font-black text-slate-950">Location</h3>
+                <PopupRow label="Country" value={selectedIp.lastLog.country || "Unknown"} />
+                <PopupRow label="City" value={selectedIp.lastLog.city || "Unknown"} />
+                <PopupRow label="ISP" value={selectedIp.lastLog.isp || "Unknown"} />
+                <PopupRow label="ASN" value={selectedIp.lastLog.asn || "Unknown"} />
               </div>
 
-              <div className="rounded-[24px] border border-white/10 bg-white/[0.045] p-6">
-                <h3 className="mb-6 text-xl font-black text-white">⚡ Login Activity Timeline</h3>
+              <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
+                <h3 className="text-lg font-black text-slate-950">Device Fingerprint</h3>
+                <PopupRow label="Device" value={selectedIp.lastLog.device || "Unknown"} />
+                <PopupRow label="OS" value={selectedIp.lastLog.os || "Unknown"} />
+                <PopupRow label="Browser" value={selectedIp.lastLog.browser || "Unknown"} />
+                <PopupRow label="Attempts" value={selectedIp.totalAttempts || 0} />
+              </div>
 
-                <div className="space-y-4">
+              <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
+                <h3 className="text-lg font-black text-slate-950">Activity Window</h3>
+                <PopupRow label="First Seen" value={selectedIp.firstLog.createdAt ? new Date(selectedIp.firstLog.createdAt).toLocaleString() : "Unknown"} />
+                <PopupRow label="Last Seen" value={selectedIp.lastLog.createdAt ? new Date(selectedIp.lastLog.createdAt).toLocaleString() : "Unknown"} />
+                <PopupRow label="Last Reason" value={selectedIp.lastLog.reason || "Unknown"} />
+                <PopupRow label="Last Key" value={selectedIp.lastLog.attemptedKey || "***"} />
+              </div>
+
+              <div className="rounded-[2rem] border border-slate-100 bg-white p-6 lg:col-span-3">
+                <h3 className="mb-5 text-xl font-black text-slate-950">Login Activity Timeline</h3>
+                <div className="space-y-3">
                   {selectedIp.logs.map((log, i) => (
-                    <div key={i} className="grid gap-3 rounded-2xl border border-white/10 bg-[#0b1728]/80 p-4 text-sm md:grid-cols-5">
+                    <div key={i} className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <span className={`font-black ${log.action === "FAILED_LOGIN" ? "text-red-400" : "text-emerald-400"}`}>
+                        <span className={`rounded-full px-3 py-1 text-xs font-black ${log.action === "FAILED_LOGIN" ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"}`}>
                           {log.action}
                         </span>
-                        <p className="mt-1 text-slate-400">{log.createdAt ? new Date(log.createdAt).toLocaleString() : "Unknown"}</p>
+                        <p className="mt-2 font-bold text-slate-600">{log.reason || "Security event recorded"}</p>
                       </div>
-                      <p className="text-slate-300">Reason: {log.reason || "Recorded"}</p>
-                      <p className="text-slate-300">Attempts: {log.attempts || 0}</p>
-                      <p className="text-slate-300">Key: {log.attemptedKey || "***"}</p>
-                      <p className="font-bold text-slate-400">{log.city || "Unknown"}, {log.country || "Unknown"}</p>
+                      <p className="text-sm font-bold text-slate-500">{log.createdAt ? new Date(log.createdAt).toLocaleString() : "Unknown"}</p>
                     </div>
                   ))}
                 </div>
@@ -959,35 +961,23 @@ function SecurityLogs({ analytics, reloadSecurity }) {
   );
 }
 
-
-function CommandStat({ title, value, note, danger }) {
+function SecurityMini({ title, value, danger }) {
   return (
-    <div className="rounded-[22px] border border-white/10 bg-white/[0.055] p-6 shadow-xl">
-      <p className="text-sm font-black text-slate-200">{title}</p>
-      <h4 className={`mt-4 text-4xl font-black ${danger ? "text-red-300" : "text-white"}`}>{value}</h4>
-      <p className={`mt-2 text-sm font-bold ${danger ? "text-red-400" : "text-slate-400"}`}>{note}</p>
+    <div className="rounded-2xl bg-white/10 p-4">
+      <p className="text-xs font-black uppercase tracking-widest text-slate-300">{title}</p>
+      <h4 className={`mt-2 text-3xl font-black ${danger ? "text-red-400" : "text-white"}`}>{value}</h4>
     </div>
   );
 }
 
-function CommandPanel({ title, children }) {
+function PopupRow({ label, value }) {
   return (
-    <div className="rounded-[22px] border border-white/10 bg-white/[0.05] p-6 shadow-xl">
-      <h3 className="mb-5 text-lg font-black text-white">{title}</h3>
-      <div className="space-y-4">{children}</div>
+    <div className="mt-4 border-b border-slate-200 pb-3 last:border-none">
+      <p className="text-xs font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-1 break-words font-black text-slate-800">{value}</p>
     </div>
   );
 }
-
-function CommandRow({ label, value }) {
-  return (
-    <div className="grid grid-cols-3 gap-4 border-b border-white/10 pb-3 last:border-none">
-      <p className="text-sm font-bold text-slate-400">{label}</p>
-      <p className="col-span-2 break-words font-bold text-slate-100">{value}</p>
-    </div>
-  );
-}
-
 
 function SecurityCard({ title, value, note }) {
   return (
