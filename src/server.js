@@ -829,130 +829,154 @@ async function sendDailyAdminReport() {
     { $limit: 5 }
   ]);
 
+  const topCountries = await Visitor.aggregate([
+    { $group: { _id: "$country", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 5 }
+  ]);
+
   const topBrowsers = await Visitor.aggregate([
     { $group: { _id: "$browser", count: { $sum: 1 } } },
     { $sort: { count: -1 } },
     { $limit: 5 }
   ]);
 
-  const healthScore = Math.max(
-    70,
-    Math.min(99, 95 - Math.min(25, failedLoginCount) + Math.min(10, todayViews))
-  );
+  const topPages = await Visitor.aggregate([
+    { $group: { _id: "$page", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 5 }
+  ]);
 
-  const trafficLevel =
-    todayViews >= 100 ? "High Growth" :
-    todayViews >= 40 ? "Healthy" :
-    todayViews >= 10 ? "Active" : "Low Activity";
+  const healthScore = Math.max(72, Math.min(98, 96 - Math.min(24, failedLoginCount) + Math.min(8, Math.floor(todayViews / 20))));
+  const trafficLevel = todayViews >= 100 ? "High Growth" : todayViews >= 40 ? "Healthy" : todayViews >= 10 ? "Active" : "Low Activity";
+  const threatLevel = failedLoginCount > 25 ? "WATCH" : failedLoginCount > 8 ? "MEDIUM" : "LOW";
+  const topCity = topCities?.[0]?._id || "Unknown";
+  const topCountry = topCountries?.[0]?._id || "Unknown";
+  const topBrowser = topBrowsers?.[0]?._id || "Unknown";
+  const topPage = topPages?.[0]?._id || "/";
 
-  const securityStatus = failedLoginCount > 20 ? "Watch Required" : failedLoginCount > 5 ? "Medium Risk" : "Secure";
+  const percent = (n) => totalVisitors ? Math.round((n / totalVisitors) * 100) : 0;
+  const bar = (n) => {
+    const w = Math.max(6, Math.min(100, percent(n)));
+    return `<div style="height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:9px;width:${w}%;background:linear-gradient(90deg,#06b6d4,#8b5cf6,#22c55e);border-radius:999px"></div></div>`;
+  };
 
-  const cityRows = topCities.map(c => `
-    <tr>
-      <td style="padding:12px;border-bottom:1px solid #e5e7eb">${c._id || "Unknown"}</td>
-      <td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:800">${c.count}</td>
-    </tr>
-  `).join("");
-
-  const browserRows = topBrowsers.map(b => `
-    <tr>
-      <td style="padding:12px;border-bottom:1px solid #e5e7eb">${b._id || "Unknown"}</td>
-      <td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:800">${b.count}</td>
-    </tr>
+  const listRows = (items, icon) => items.map(x => `
+    <div style="padding:13px 0;border-bottom:1px solid #e5e7eb">
+      <div style="display:flex;justify-content:space-between;gap:12px">
+        <div style="font-weight:900;color:#0f172a">${icon} ${x._id || "Unknown"}</div>
+        <div style="font-weight:1000;color:#020617">${x.count}</div>
+      </div>
+      ${bar(x.count)}
+    </div>
   `).join("");
 
   const visitorRows = recentVisitors.map(v => `
     <tr>
-      <td style="padding:12px;border-bottom:1px solid #e5e7eb">🌍 ${v.city || "Unknown"}, ${v.country || "Unknown"}</td>
-      <td style="padding:12px;border-bottom:1px solid #e5e7eb">${v.browser || "Unknown"} / ${v.os || "Unknown"}</td>
-      <td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right">${v.page || "/"}</td>
+      <td style="padding:14px;border-bottom:1px solid #e5e7eb;font-weight:800">🌍 ${v.city || "Unknown"}, ${v.country || "Unknown"}</td>
+      <td style="padding:14px;border-bottom:1px solid #e5e7eb;color:#475569">${v.browser || "Unknown"} • ${v.os || "Unknown"}</td>
+      <td style="padding:14px;border-bottom:1px solid #e5e7eb;text-align:right;color:#0f172a;font-weight:900">${v.page || "/"}</td>
     </tr>
   `).join("");
 
   const messageRows = recentMessages.map(m => `
-    <div style="border:1px solid #e5e7eb;border-radius:18px;padding:16px;margin-bottom:12px;background:#ffffff">
-      <div style="font-weight:900;color:#020617">📩 ${m.name || "Unknown"} <span style="font-size:12px;color:#64748b;font-weight:700">(${m.email || "No email"})</span></div>
-      <div style="margin-top:8px;color:#334155;line-height:1.55">${String(m.message || "").slice(0, 260)}${String(m.message || "").length > 260 ? "..." : ""}</div>
+    <div style="border:1px solid #e5e7eb;border-radius:22px;padding:18px;margin-bottom:14px;background:linear-gradient(135deg,#ffffff,#f8fafc)">
+      <div style="font-size:15px;font-weight:1000;color:#020617">📩 ${m.name || "Unknown"}</div>
+      <div style="font-size:12px;color:#64748b;font-weight:800;margin-top:3px">${m.email || "No email"}</div>
+      <div style="margin-top:10px;color:#334155;line-height:1.65;font-weight:650">${String(m.message || "").slice(0, 230)}${String(m.message || "").length > 230 ? "..." : ""}</div>
     </div>
   `).join("");
 
   const html = `
-  <div style="margin:0;padding:0;background:#eef4ff;font-family:Inter,Arial,sans-serif;color:#0f172a">
-    <div style="max-width:820px;margin:0 auto;padding:28px 14px">
+  <div style="margin:0;padding:0;background:#eaf1ff;font-family:Inter,Arial,sans-serif;color:#0f172a">
+    <div style="max-width:880px;margin:0 auto;padding:30px 14px">
 
-      <div style="background:linear-gradient(135deg,#020617,#0f172a 45%,#164e63);border-radius:32px;padding:34px;color:white;box-shadow:0 24px 70px rgba(15,23,42,.30)">
-        <div style="font-size:12px;letter-spacing:4px;color:#67e8f9;font-weight:900">REAL AI ADMIN AGENT</div>
-        <h1 style="margin:12px 0 8px;font-size:34px;line-height:1.1">NS.ai Executive Portfolio Report</h1>
-        <p style="margin:0;color:#cbd5e1;font-size:15px">Hi Naitik, here is your premium portfolio intelligence summary.</p>
+      <div style="background:radial-gradient(circle at top left,#22d3ee33,transparent 32%),radial-gradient(circle at top right,#8b5cf633,transparent 35%),linear-gradient(135deg,#020617,#0b1120 50%,#123047);border-radius:34px;padding:36px;color:white;box-shadow:0 30px 80px rgba(15,23,42,.35)">
+        <div style="display:flex;justify-content:space-between;gap:20px;align-items:flex-start">
+          <div>
+            <div style="font-size:12px;letter-spacing:4px;color:#67e8f9;font-weight:1000">REAL AI ADMIN AGENT</div>
+            <h1 style="margin:12px 0 10px;font-size:38px;line-height:1.08">NS.ai Executive SaaS Report V2</h1>
+            <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.6">Premium portfolio intelligence summary for Naitik Soni.</p>
+          </div>
+          <div style="text-align:center;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:28px;padding:18px;min-width:150px">
+            <div style="font-size:12px;color:#a7f3d0;font-weight:900">HEALTH SCORE</div>
+            <div style="font-size:44px;font-weight:1000;line-height:1">${healthScore}</div>
+            <div style="font-size:12px;color:#cbd5e1;font-weight:800">/100</div>
+          </div>
+        </div>
 
-        <div style="margin-top:24px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:18px">
-          <div style="font-size:13px;color:#cbd5e1;font-weight:700">Overall Website Health</div>
-          <div style="font-size:46px;font-weight:1000;margin-top:4px">${healthScore}/100</div>
-          <div style="color:#86efac;font-weight:900">Status: ${trafficLevel} • Security: ${securityStatus}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:24px">
+          <span style="background:#10b98122;border:1px solid #34d39977;color:#86efac;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● ${trafficLevel}</span>
+          <span style="background:#06b6d422;border:1px solid #22d3ee77;color:#67e8f9;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● Top City: ${topCity}</span>
+          <span style="background:#8b5cf622;border:1px solid #a78bfa77;color:#ddd6fe;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● Browser: ${topBrowser}</span>
+          <span style="background:#f59e0b22;border:1px solid #fbbf2477;color:#fde68a;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● Threat: ${threatLevel}</span>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px">
-        <div style="background:#ecfeff;border-radius:22px;padding:20px;border:1px solid #bae6fd">
-          <div style="color:#0369a1;font-weight:900;font-size:13px">Today Views</div>
-          <div style="font-size:34px;font-weight:1000;margin-top:8px">${todayViews}</div>
-        </div>
-        <div style="background:#f0fdf4;border-radius:22px;padding:20px;border:1px solid #bbf7d0">
-          <div style="color:#15803d;font-weight:900;font-size:13px">Total Visitors</div>
-          <div style="font-size:34px;font-weight:1000;margin-top:8px">${totalVisitors}</div>
-        </div>
-        <div style="background:#fff7ed;border-radius:22px;padding:20px;border:1px solid #fed7aa">
-          <div style="color:#c2410c;font-weight:900;font-size:13px">Messages</div>
-          <div style="font-size:34px;font-weight:1000;margin-top:8px">${totalMessages}</div>
-          <div style="font-size:12px;color:#64748b;font-weight:800">${unreadMessages} unread</div>
-        </div>
-        <div style="background:#fef2f2;border-radius:22px;padding:20px;border:1px solid #fecaca">
-          <div style="color:#b91c1c;font-weight:900;font-size:13px">Failed Logins</div>
-          <div style="font-size:34px;font-weight:1000;margin-top:8px">${failedLoginCount}</div>
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px">
+        ${[
+          ["Today Views", todayViews, "#ecfeff", "#0891b2"],
+          ["Total Visitors", totalVisitors, "#f0fdf4", "#15803d"],
+          ["Messages", totalMessages, "#fff7ed", "#c2410c"],
+          ["Failed Logins", failedLoginCount, "#fef2f2", "#b91c1c"],
+        ].map(([label, value, bg, color]) => `
+          <div style="background:${bg};border-radius:24px;padding:20px;border:1px solid rgba(15,23,42,.08);box-shadow:0 16px 40px rgba(15,23,42,.07)">
+            <div style="color:${color};font-weight:1000;font-size:12px;text-transform:uppercase;letter-spacing:.6px">${label}</div>
+            <div style="font-size:34px;font-weight:1000;margin-top:8px;color:#020617">${value}</div>
+          </div>
+        `).join("")}
       </div>
 
-      <div style="background:white;border-radius:28px;padding:24px;margin-top:18px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
-        <h2 style="margin:0 0 12px;font-size:22px">🤖 NS.ai Insights</h2>
-        <ul style="margin:0;padding-left:20px;color:#334155;line-height:1.8;font-weight:700">
-          <li>Traffic status is <b>${trafficLevel}</b> with ${todayViews} views today.</li>
-          <li>Your portfolio currently has <b>${totalVisitors}</b> total visitors.</li>
-          <li>Security status is <b>${securityStatus}</b> based on ${failedLoginCount} failed login events.</li>
-          <li>You have <b>${totalMessages}</b> contact messages and <b>${unreadMessages}</b> unread messages.</li>
-        </ul>
+      <div style="background:white;border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
+        <h2 style="margin:0 0 14px;font-size:24px">🤖 NS.ai Intelligence Summary</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Traffic</b><br/><span style="color:#475569">Today traffic is <b>${trafficLevel}</b> with ${todayViews} views.</span></div>
+          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Audience</b><br/><span style="color:#475569">Most active location is <b>${topCity}, ${topCountry}</b>.</span></div>
+          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Engagement</b><br/><span style="color:#475569">Top page is <b>${topPage}</b> with strong visitor attention.</span></div>
+          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Security</b><br/><span style="color:#475569">Threat level is <b>${threatLevel}</b> based on login activity.</span></div>
+        </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
-        <div style="background:white;border-radius:24px;padding:22px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
-          <h3 style="margin:0 0 12px">🏙️ Top Cities</h3>
-          <table style="width:100%;border-collapse:collapse">${cityRows || "<tr><td>No city data</td></tr>"}</table>
+        <div style="background:white;border-radius:28px;padding:24px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
+          <h3 style="margin:0 0 12px;font-size:20px">🏙️ Top Cities</h3>
+          ${listRows(topCities, "📍") || "<p>No city data</p>"}
         </div>
-        <div style="background:white;border-radius:24px;padding:22px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
-          <h3 style="margin:0 0 12px">🌐 Top Browsers</h3>
-          <table style="width:100%;border-collapse:collapse">${browserRows || "<tr><td>No browser data</td></tr>"}</table>
+        <div style="background:white;border-radius:28px;padding:24px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
+          <h3 style="margin:0 0 12px;font-size:20px">🌐 Top Browsers</h3>
+          ${listRows(topBrowsers, "🧭") || "<p>No browser data</p>"}
         </div>
       </div>
 
-      <div style="background:white;border-radius:28px;padding:24px;margin-top:18px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
-        <h2 style="margin:0 0 14px">🌍 Recent Visitors</h2>
+      <div style="background:white;border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
+        <h2 style="margin:0 0 14px">🌍 Recent Visitor Intelligence</h2>
         <table style="width:100%;border-collapse:collapse;font-size:14px">
           <tr style="color:#64748b;text-align:left">
-            <th style="padding:12px;border-bottom:2px solid #e5e7eb">Location</th>
-            <th style="padding:12px;border-bottom:2px solid #e5e7eb">Device</th>
-            <th style="padding:12px;border-bottom:2px solid #e5e7eb;text-align:right">Page</th>
+            <th style="padding:14px;border-bottom:2px solid #e5e7eb">Location</th>
+            <th style="padding:14px;border-bottom:2px solid #e5e7eb">System</th>
+            <th style="padding:14px;border-bottom:2px solid #e5e7eb;text-align:right">Page</th>
           </tr>
-          ${visitorRows || "<tr><td style='padding:12px'>No recent visitors</td></tr>"}
+          ${visitorRows || "<tr><td style='padding:14px'>No recent visitors</td></tr>"}
         </table>
       </div>
 
-      <div style="background:white;border-radius:28px;padding:24px;margin-top:18px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
-        <h2 style="margin:0 0 14px">📩 Recent Leads & Messages</h2>
-        ${messageRows || "<p style='color:#64748b;font-weight:700'>No recent messages.</p>"}
+      <div style="background:linear-gradient(135deg,#f8fafc,#ffffff);border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
+        <h2 style="margin:0 0 14px">📩 Lead Intelligence</h2>
+        ${messageRows || "<p style='color:#64748b;font-weight:800'>No recent leads.</p>"}
       </div>
 
-      <div style="text-align:center;color:#64748b;font-size:13px;font-weight:800;margin:24px 0">
-        Generated automatically by <b>NS.ai</b> • Developed by Naitik Soni<br/>
-        Portfolio Intelligence Platform
+      <div style="background:#020617;color:white;border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.18)">
+        <h2 style="margin:0 0 14px">🛡️ Security Operations Center</h2>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+          <div style="background:white10;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px"><b>Failed Logins</b><br/><span style="font-size:28px;font-weight:1000">${failedLoginCount}</span></div>
+          <div style="background:white10;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px"><b>Threat Level</b><br/><span style="font-size:28px;font-weight:1000">${threatLevel}</span></div>
+          <div style="background:white10;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px"><b>Backend</b><br/><span style="font-size:28px;font-weight:1000;color:#86efac">ONLINE</span></div>
+        </div>
+      </div>
+
+      <div style="text-align:center;color:#64748b;font-size:13px;font-weight:900;margin:26px 0">
+        Generated by <b>NS.ai</b> • Portfolio Intelligence Platform<br/>
+        Developed by Naitik Soni • Cybersecurity Engineer • Ethical Hacker
       </div>
     </div>
   </div>`;  const mailRes = await fetch("https://api.resend.com/emails", {
