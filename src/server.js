@@ -737,7 +737,7 @@ ${question}
 `;
 
     const aiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -752,8 +752,17 @@ ${question}
     );
 
     const aiData = await aiRes.json();
+
+    if (!aiRes.ok) {
+      console.error("Gemini API error:", JSON.stringify(aiData, null, 2));
+      return res.status(500).json({
+        error: aiData?.error?.message || "Gemini API failed",
+        details: aiData
+      });
+    }
+
     const answer =
-      aiData?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      aiData?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\n") ||
       "NS.ai could not generate a response right now.";
 
     res.json({ answer });
