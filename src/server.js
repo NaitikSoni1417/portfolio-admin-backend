@@ -746,8 +746,8 @@ ${question}
             { role: "system", content: "You are NS.ai, a real AI admin agent." },
             { role: "user", content: prompt }
           ],
-          temperature: 0.4,
-          max_tokens: 900
+          temperature: 0.35,
+          max_tokens: 300
         })
       });
 
