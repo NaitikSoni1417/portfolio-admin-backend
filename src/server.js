@@ -823,34 +823,139 @@ async function sendDailyAdminReport() {
   const recentMessages = await Message.find().sort({ createdAt: -1 }).limit(5);
   const recentVisitors = await Visitor.find().sort({ createdAt: -1 }).limit(5);
 
-  const html = `
-  <div style="font-family:Arial,sans-serif;background:#f6f8ff;padding:24px">
-    <div style="max-width:720px;margin:auto;background:white;border-radius:24px;padding:28px;box-shadow:0 18px 50px rgba(15,23,42,.12)">
-      <h1 style="margin:0;color:#020617">NS.ai Daily Portfolio Report</h1>
-      <p style="color:#64748b">Hi Naitik, here is your automated admin report.</p>
+  const topCities = await Visitor.aggregate([
+    { $group: { _id: "$city", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 5 }
+  ]);
 
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:24px 0">
-        <div style="background:#ecfeff;padding:18px;border-radius:18px"><b>Today Views</b><h2>${todayViews}</h2></div>
-        <div style="background:#f0fdf4;padding:18px;border-radius:18px"><b>Total Visitors</b><h2>${totalVisitors}</h2></div>
-        <div style="background:#fff7ed;padding:18px;border-radius:18px"><b>Messages</b><h2>${totalMessages}</h2><small>${unreadMessages} unread</small></div>
-        <div style="background:#fef2f2;padding:18px;border-radius:18px"><b>Failed Logins</b><h2>${failedLoginCount}</h2></div>
+  const topBrowsers = await Visitor.aggregate([
+    { $group: { _id: "$browser", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 5 }
+  ]);
+
+  const healthScore = Math.max(
+    70,
+    Math.min(99, 95 - Math.min(25, failedLoginCount) + Math.min(10, todayViews))
+  );
+
+  const trafficLevel =
+    todayViews >= 100 ? "High Growth" :
+    todayViews >= 40 ? "Healthy" :
+    todayViews >= 10 ? "Active" : "Low Activity";
+
+  const securityStatus = failedLoginCount > 20 ? "Watch Required" : failedLoginCount > 5 ? "Medium Risk" : "Secure";
+
+  const cityRows = topCities.map(c => `
+    <tr>
+      <td style="padding:12px;border-bottom:1px solid #e5e7eb">${c._id || "Unknown"}</td>
+      <td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:800">${c.count}</td>
+    </tr>
+  `).join("");
+
+  const browserRows = topBrowsers.map(b => `
+    <tr>
+      <td style="padding:12px;border-bottom:1px solid #e5e7eb">${b._id || "Unknown"}</td>
+      <td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:800">${b.count}</td>
+    </tr>
+  `).join("");
+
+  const visitorRows = recentVisitors.map(v => `
+    <tr>
+      <td style="padding:12px;border-bottom:1px solid #e5e7eb">🌍 ${v.city || "Unknown"}, ${v.country || "Unknown"}</td>
+      <td style="padding:12px;border-bottom:1px solid #e5e7eb">${v.browser || "Unknown"} / ${v.os || "Unknown"}</td>
+      <td style="padding:12px;border-bottom:1px solid #e5e7eb;text-align:right">${v.page || "/"}</td>
+    </tr>
+  `).join("");
+
+  const messageRows = recentMessages.map(m => `
+    <div style="border:1px solid #e5e7eb;border-radius:18px;padding:16px;margin-bottom:12px;background:#ffffff">
+      <div style="font-weight:900;color:#020617">📩 ${m.name || "Unknown"} <span style="font-size:12px;color:#64748b;font-weight:700">(${m.email || "No email"})</span></div>
+      <div style="margin-top:8px;color:#334155;line-height:1.55">${String(m.message || "").slice(0, 260)}${String(m.message || "").length > 260 ? "..." : ""}</div>
+    </div>
+  `).join("");
+
+  const html = `
+  <div style="margin:0;padding:0;background:#eef4ff;font-family:Inter,Arial,sans-serif;color:#0f172a">
+    <div style="max-width:820px;margin:0 auto;padding:28px 14px">
+
+      <div style="background:linear-gradient(135deg,#020617,#0f172a 45%,#164e63);border-radius:32px;padding:34px;color:white;box-shadow:0 24px 70px rgba(15,23,42,.30)">
+        <div style="font-size:12px;letter-spacing:4px;color:#67e8f9;font-weight:900">REAL AI ADMIN AGENT</div>
+        <h1 style="margin:12px 0 8px;font-size:34px;line-height:1.1">NS.ai Executive Portfolio Report</h1>
+        <p style="margin:0;color:#cbd5e1;font-size:15px">Hi Naitik, here is your premium portfolio intelligence summary.</p>
+
+        <div style="margin-top:24px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:18px">
+          <div style="font-size:13px;color:#cbd5e1;font-weight:700">Overall Website Health</div>
+          <div style="font-size:46px;font-weight:1000;margin-top:4px">${healthScore}/100</div>
+          <div style="color:#86efac;font-weight:900">Status: ${trafficLevel} • Security: ${securityStatus}</div>
+        </div>
       </div>
 
-      <h3>Recent Visitors</h3>
-      ${recentVisitors.map(v => `<p>🌍 ${v.city || "Unknown"}, ${v.country || "Unknown"} • ${v.browser || "Unknown"} • ${v.page || "/"}</p>`).join("")}
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px">
+        <div style="background:#ecfeff;border-radius:22px;padding:20px;border:1px solid #bae6fd">
+          <div style="color:#0369a1;font-weight:900;font-size:13px">Today Views</div>
+          <div style="font-size:34px;font-weight:1000;margin-top:8px">${todayViews}</div>
+        </div>
+        <div style="background:#f0fdf4;border-radius:22px;padding:20px;border:1px solid #bbf7d0">
+          <div style="color:#15803d;font-weight:900;font-size:13px">Total Visitors</div>
+          <div style="font-size:34px;font-weight:1000;margin-top:8px">${totalVisitors}</div>
+        </div>
+        <div style="background:#fff7ed;border-radius:22px;padding:20px;border:1px solid #fed7aa">
+          <div style="color:#c2410c;font-weight:900;font-size:13px">Messages</div>
+          <div style="font-size:34px;font-weight:1000;margin-top:8px">${totalMessages}</div>
+          <div style="font-size:12px;color:#64748b;font-weight:800">${unreadMessages} unread</div>
+        </div>
+        <div style="background:#fef2f2;border-radius:22px;padding:20px;border:1px solid #fecaca">
+          <div style="color:#b91c1c;font-weight:900;font-size:13px">Failed Logins</div>
+          <div style="font-size:34px;font-weight:1000;margin-top:8px">${failedLoginCount}</div>
+        </div>
+      </div>
 
-      <h3>Recent Messages</h3>
-      ${recentMessages.map(m => `<p>📩 <b>${m.name || "Unknown"}</b> — ${m.message || ""}</p>`).join("")}
+      <div style="background:white;border-radius:28px;padding:24px;margin-top:18px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
+        <h2 style="margin:0 0 12px;font-size:22px">🤖 NS.ai Insights</h2>
+        <ul style="margin:0;padding-left:20px;color:#334155;line-height:1.8;font-weight:700">
+          <li>Traffic status is <b>${trafficLevel}</b> with ${todayViews} views today.</li>
+          <li>Your portfolio currently has <b>${totalVisitors}</b> total visitors.</li>
+          <li>Security status is <b>${securityStatus}</b> based on ${failedLoginCount} failed login events.</li>
+          <li>You have <b>${totalMessages}</b> contact messages and <b>${unreadMessages}</b> unread messages.</li>
+        </ul>
+      </div>
 
-      <p style="margin-top:28px;color:#64748b">Generated automatically by NS.ai • Developed by Naitik Soni</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
+        <div style="background:white;border-radius:24px;padding:22px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
+          <h3 style="margin:0 0 12px">🏙️ Top Cities</h3>
+          <table style="width:100%;border-collapse:collapse">${cityRows || "<tr><td>No city data</td></tr>"}</table>
+        </div>
+        <div style="background:white;border-radius:24px;padding:22px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
+          <h3 style="margin:0 0 12px">🌐 Top Browsers</h3>
+          <table style="width:100%;border-collapse:collapse">${browserRows || "<tr><td>No browser data</td></tr>"}</table>
+        </div>
+      </div>
+
+      <div style="background:white;border-radius:28px;padding:24px;margin-top:18px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
+        <h2 style="margin:0 0 14px">🌍 Recent Visitors</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <tr style="color:#64748b;text-align:left">
+            <th style="padding:12px;border-bottom:2px solid #e5e7eb">Location</th>
+            <th style="padding:12px;border-bottom:2px solid #e5e7eb">Device</th>
+            <th style="padding:12px;border-bottom:2px solid #e5e7eb;text-align:right">Page</th>
+          </tr>
+          ${visitorRows || "<tr><td style='padding:12px'>No recent visitors</td></tr>"}
+        </table>
+      </div>
+
+      <div style="background:white;border-radius:28px;padding:24px;margin-top:18px;box-shadow:0 18px 45px rgba(15,23,42,.08)">
+        <h2 style="margin:0 0 14px">📩 Recent Leads & Messages</h2>
+        ${messageRows || "<p style='color:#64748b;font-weight:700'>No recent messages.</p>"}
+      </div>
+
+      <div style="text-align:center;color:#64748b;font-size:13px;font-weight:800;margin:24px 0">
+        Generated automatically by <b>NS.ai</b> • Developed by Naitik Soni<br/>
+        Portfolio Intelligence Platform
+      </div>
     </div>
-  </div>`;
-
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error("RESEND_API_KEY missing");
-  }
-
-  const mailRes = await fetch("https://api.resend.com/emails", {
+  </div>`;  const mailRes = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
