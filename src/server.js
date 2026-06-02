@@ -1009,7 +1009,7 @@ async function sendDailyAdminReport() {
     body: JSON.stringify({
       from: "NS.ai Reports <onboarding@resend.dev>",
       to: process.env.REPORT_EMAIL,
-      subject: `NS.ai Daily Report - ${new Date().toLocaleDateString("en-IN")}`,
+      subject: `NS.ai | Executive Portfolio Intelligence Report - ${new Date().toLocaleDateString("en-IN")}`,
       html,
     }),
   });
