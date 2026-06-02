@@ -823,6 +823,22 @@ async function sendDailyAdminReport() {
   const recentMessages = await Message.find().sort({ createdAt: -1 }).limit(5);
   const recentVisitors = await Visitor.find().sort({ createdAt: -1 }).limit(5);
 
+  const yesterdayStart = new Date();
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  yesterdayStart.setHours(0, 0, 0, 0);
+
+  const yesterdayEnd = new Date();
+  yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+  yesterdayEnd.setHours(23, 59, 59, 999);
+
+  const yesterdayViews = await Visitor.countDocuments({
+    createdAt: { $gte: yesterdayStart, $lte: yesterdayEnd }
+  });
+
+  const visitorGrowth = yesterdayViews > 0
+    ? Math.round(((todayViews - yesterdayViews) / yesterdayViews) * 100)
+    : todayViews > 0 ? 100 : 0;
+
   const topCities = await Visitor.aggregate([
     { $group: { _id: "$city", count: { $sum: 1 } } },
     { $sort: { count: -1 } },
@@ -847,135 +863,140 @@ async function sendDailyAdminReport() {
     { $limit: 5 }
   ]);
 
-  const healthScore = Math.max(72, Math.min(98, 96 - Math.min(24, failedLoginCount) + Math.min(8, Math.floor(todayViews / 20))));
-  const trafficLevel = todayViews >= 100 ? "High Growth" : todayViews >= 40 ? "Healthy" : todayViews >= 10 ? "Active" : "Low Activity";
+  const securityScore = Math.max(40, Math.min(99, 100 - Math.min(45, failedLoginCount)));
+  const healthScore = Math.max(60, Math.min(99, Math.round((securityScore + Math.min(100, todayViews)) / 2)));
   const threatLevel = failedLoginCount > 25 ? "WATCH" : failedLoginCount > 8 ? "MEDIUM" : "LOW";
+  const trafficLevel = todayViews >= 100 ? "High Growth" : todayViews >= 40 ? "Healthy" : todayViews >= 10 ? "Active" : "Low Activity";
+
   const topCity = topCities?.[0]?._id || "Unknown";
   const topCountry = topCountries?.[0]?._id || "Unknown";
   const topBrowser = topBrowsers?.[0]?._id || "Unknown";
   const topPage = topPages?.[0]?._id || "/";
 
-  const percent = (n) => totalVisitors ? Math.round((n / totalVisitors) * 100) : 0;
-  const bar = (n) => {
-    const w = Math.max(6, Math.min(100, percent(n)));
-    return `<div style="height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:8px"><div style="height:9px;width:${w}%;background:linear-gradient(90deg,#06b6d4,#8b5cf6,#22c55e);border-radius:999px"></div></div>`;
-  };
+  const clean = (v) => String(v || "Unknown").replace(/[<>&]/g, "");
 
-  const listRows = (items, icon) => items.map(x => `
-    <div style="padding:13px 0;border-bottom:1px solid #e5e7eb">
+  const listRows = (items, icon) => items.map((x, i) => `
+    <div style="padding:14px 0;border-bottom:1px solid rgba(148,163,184,.18)">
       <div style="display:flex;justify-content:space-between;gap:12px">
-        <div style="font-weight:900;color:#0f172a">${icon} ${x._id || "Unknown"}</div>
-        <div style="font-weight:1000;color:#020617">${x.count}</div>
+        <div style="font-weight:900;color:#e5f3ff">${icon} ${i + 1}. ${clean(x._id)}</div>
+        <div style="font-weight:1000;color:#67e8f9">${x.count}</div>
       </div>
-      ${bar(x.count)}
+      <div style="height:8px;background:#1e293b;border-radius:999px;overflow:hidden;margin-top:9px">
+        <div style="height:8px;width:${Math.min(100, Math.max(8, Math.round((x.count / Math.max(1,totalVisitors)) * 100)))}%;background:linear-gradient(90deg,#06b6d4,#8b5cf6,#22c55e);border-radius:999px"></div>
+      </div>
     </div>
   `).join("");
 
-  const visitorRows = recentVisitors.map(v => `
-    <tr>
-      <td style="padding:14px;border-bottom:1px solid #e5e7eb;font-weight:800">🌍 ${v.city || "Unknown"}, ${v.country || "Unknown"}</td>
-      <td style="padding:14px;border-bottom:1px solid #e5e7eb;color:#475569">${v.browser || "Unknown"} • ${v.os || "Unknown"}</td>
-      <td style="padding:14px;border-bottom:1px solid #e5e7eb;text-align:right;color:#0f172a;font-weight:900">${v.page || "/"}</td>
-    </tr>
-  `).join("");
-
-  const messageRows = recentMessages.map(m => `
-    <div style="border:1px solid #e5e7eb;border-radius:22px;padding:18px;margin-bottom:14px;background:linear-gradient(135deg,#ffffff,#f8fafc)">
-      <div style="font-size:15px;font-weight:1000;color:#020617">📩 ${m.name || "Unknown"}</div>
-      <div style="font-size:12px;color:#64748b;font-weight:800;margin-top:3px">${m.email || "No email"}</div>
-      <div style="margin-top:10px;color:#334155;line-height:1.65;font-weight:650">${String(m.message || "").slice(0, 230)}${String(m.message || "").length > 230 ? "..." : ""}</div>
+  const leadRows = recentMessages.map((m, i) => `
+    <div style="border:1px solid rgba(148,163,184,.25);border-radius:22px;padding:18px;margin-bottom:14px;background:linear-gradient(135deg,#0f172a,#111827)">
+      <div style="display:flex;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-size:15px;font-weight:1000;color:#ffffff">👤 ${clean(m.name)}</div>
+          <div style="font-size:12px;color:#94a3b8;font-weight:800;margin-top:3px">${clean(m.email)}</div>
+        </div>
+        <div style="height:28px;padding:0 12px;border-radius:999px;background:${i === 0 ? "#22c55e22" : "#06b6d422"};color:${i === 0 ? "#86efac" : "#67e8f9"};font-size:11px;font-weight:1000;line-height:28px">
+          ${i === 0 ? "HOT LEAD" : "NEW LEAD"}
+        </div>
+      </div>
+      <div style="margin-top:12px;color:#cbd5e1;line-height:1.6;font-weight:650">
+        ${clean(String(m.message || "").slice(0, 210))}${String(m.message || "").length > 210 ? "..." : ""}
+      </div>
     </div>
   `).join("");
 
   const html = `
-  <div style="margin:0;padding:0;background:#eaf1ff;font-family:Inter,Arial,sans-serif;color:#0f172a">
-    <div style="max-width:880px;margin:0 auto;padding:30px 14px">
+  <div style="margin:0;padding:0;background:#020617;font-family:Inter,Arial,sans-serif;color:#e5e7eb">
+    <div style="max-width:930px;margin:0 auto;padding:30px 14px">
 
-      <div style="background:radial-gradient(circle at top left,#22d3ee33,transparent 32%),radial-gradient(circle at top right,#8b5cf633,transparent 35%),linear-gradient(135deg,#020617,#0b1120 50%,#123047);border-radius:34px;padding:36px;color:white;box-shadow:0 30px 80px rgba(15,23,42,.35)">
-        <div style="display:flex;justify-content:space-between;gap:20px;align-items:flex-start">
-          <div>
-            <div style="font-size:12px;letter-spacing:4px;color:#67e8f9;font-weight:1000">REAL AI ADMIN AGENT</div>
-            <h1 style="margin:12px 0 10px;font-size:38px;line-height:1.08">NS.ai Executive SaaS Report V2</h1>
-            <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.6">Premium portfolio intelligence summary for Naitik Soni.</p>
-          </div>
-          <div style="text-align:center;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:28px;padding:18px;min-width:150px">
-            <div style="font-size:12px;color:#a7f3d0;font-weight:900">HEALTH SCORE</div>
-            <div style="font-size:44px;font-weight:1000;line-height:1">${healthScore}</div>
-            <div style="font-size:12px;color:#cbd5e1;font-weight:800">/100</div>
-          </div>
-        </div>
+      <div style="background:radial-gradient(circle at 10% 0%,#22d3ee44,transparent 28%),radial-gradient(circle at 88% 8%,#8b5cf655,transparent 35%),linear-gradient(135deg,#020617,#0b1120 55%,#0f2f3f);border-radius:36px;padding:38px;color:white;box-shadow:0 30px 90px rgba(34,211,238,.18);border:1px solid rgba(103,232,249,.18)">
+        <div style="font-size:12px;letter-spacing:5px;color:#67e8f9;font-weight:1000">REAL AI ADMIN AGENT</div>
+        <h1 style="margin:12px 0 10px;font-size:42px;line-height:1.05">NS.ai Executive SaaS Report V3</h1>
+        <p style="margin:0;color:#cbd5e1;font-size:16px;line-height:1.6">Premium portfolio intelligence report for Naitik Soni.</p>
 
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:24px">
-          <span style="background:#10b98122;border:1px solid #34d39977;color:#86efac;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● ${trafficLevel}</span>
-          <span style="background:#06b6d422;border:1px solid #22d3ee77;color:#67e8f9;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● Top City: ${topCity}</span>
-          <span style="background:#8b5cf622;border:1px solid #a78bfa77;color:#ddd6fe;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● Browser: ${topBrowser}</span>
-          <span style="background:#f59e0b22;border:1px solid #fbbf2477;color:#fde68a;border-radius:999px;padding:9px 14px;font-weight:1000;font-size:12px">● Threat: ${threatLevel}</span>
+        <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:16px;margin-top:26px">
+          <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:28px;padding:22px">
+            <div style="font-size:13px;color:#a7f3d0;font-weight:1000">EXECUTIVE SUMMARY</div>
+            <p style="margin:10px 0 0;color:#e2e8f0;line-height:1.8;font-weight:700">
+              NS.ai detected <b>${trafficLevel}</b> portfolio activity today. Visitor growth is <b>${visitorGrowth}%</b>,
+              top audience location is <b>${topCity}</b>, top browser is <b>${topBrowser}</b>, and security threat level is <b>${threatLevel}</b>.
+            </p>
+          </div>
+
+          <div style="background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:28px;padding:22px;text-align:center">
+            <div style="font-size:12px;color:#67e8f9;font-weight:1000">WEBSITE HEALTH</div>
+            <div style="font-size:58px;font-weight:1000;line-height:1;margin-top:10px">${healthScore}</div>
+            <div style="font-size:13px;color:#cbd5e1;font-weight:800">/100</div>
+            <div style="margin-top:12px;color:#86efac;font-weight:1000">● ${healthScore >= 85 ? "EXCELLENT" : healthScore >= 70 ? "GOOD" : "NEEDS ATTENTION"}</div>
+          </div>
         </div>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px">
         ${[
-          ["Today Views", todayViews, "#ecfeff", "#0891b2"],
-          ["Total Visitors", totalVisitors, "#f0fdf4", "#15803d"],
-          ["Messages", totalMessages, "#fff7ed", "#c2410c"],
-          ["Failed Logins", failedLoginCount, "#fef2f2", "#b91c1c"],
-        ].map(([label, value, bg, color]) => `
-          <div style="background:${bg};border-radius:24px;padding:20px;border:1px solid rgba(15,23,42,.08);box-shadow:0 16px 40px rgba(15,23,42,.07)">
-            <div style="color:${color};font-weight:1000;font-size:12px;text-transform:uppercase;letter-spacing:.6px">${label}</div>
-            <div style="font-size:34px;font-weight:1000;margin-top:8px;color:#020617">${value}</div>
+          ["Today Views", todayViews, "👁️", "#06b6d4"],
+          ["Total Visitors", totalVisitors, "👥", "#22c55e"],
+          ["Messages", totalMessages, "📩", "#f59e0b"],
+          ["Security Score", securityScore, "🛡️", "#8b5cf6"],
+        ].map(([label, value, icon, color]) => `
+          <div style="background:linear-gradient(135deg,#0f172a,#111827);border:1px solid rgba(148,163,184,.22);border-radius:26px;padding:20px;box-shadow:0 18px 55px rgba(0,0,0,.25)">
+            <div style="font-size:28px">${icon}</div>
+            <div style="color:${color};font-weight:1000;font-size:12px;text-transform:uppercase;letter-spacing:.6px;margin-top:10px">${label}</div>
+            <div style="font-size:34px;font-weight:1000;margin-top:8px;color:white">${value}</div>
           </div>
         `).join("")}
       </div>
 
-      <div style="background:white;border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
-        <h2 style="margin:0 0 14px;font-size:24px">🤖 NS.ai Intelligence Summary</h2>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Traffic</b><br/><span style="color:#475569">Today traffic is <b>${trafficLevel}</b> with ${todayViews} views.</span></div>
-          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Audience</b><br/><span style="color:#475569">Most active location is <b>${topCity}, ${topCountry}</b>.</span></div>
-          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Engagement</b><br/><span style="color:#475569">Top page is <b>${topPage}</b> with strong visitor attention.</span></div>
-          <div style="background:#f8fafc;border-radius:20px;padding:16px"><b>Security</b><br/><span style="color:#475569">Threat level is <b>${threatLevel}</b> based on login activity.</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
+        <div style="background:linear-gradient(135deg,#0f172a,#111827);border:1px solid rgba(34,211,238,.22);border-radius:30px;padding:26px">
+          <h2 style="margin:0 0 18px;color:#67e8f9">📈 Weekly Comparison</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="background:#020617;border-radius:20px;padding:16px"><b>Visitor Growth</b><br/><span style="font-size:30px;color:#86efac;font-weight:1000">${visitorGrowth >= 0 ? "+" : ""}${visitorGrowth}%</span></div>
+            <div style="background:#020617;border-radius:20px;padding:16px"><b>Yesterday Views</b><br/><span style="font-size:30px;color:#67e8f9;font-weight:1000">${yesterdayViews}</span></div>
+            <div style="background:#020617;border-radius:20px;padding:16px"><b>Lead Volume</b><br/><span style="font-size:30px;color:#fbbf24;font-weight:1000">${totalMessages}</span></div>
+            <div style="background:#020617;border-radius:20px;padding:16px"><b>Threat Level</b><br/><span style="font-size:30px;color:#fb7185;font-weight:1000">${threatLevel}</span></div>
+          </div>
+        </div>
+
+        <div style="background:linear-gradient(135deg,#0f172a,#111827);border:1px solid rgba(34,197,94,.22);border-radius:30px;padding:26px">
+          <h2 style="margin:0 0 18px;color:#86efac">🤖 AI Recommendations</h2>
+          <ul style="margin:0;padding-left:20px;color:#dbeafe;line-height:1.9;font-weight:800">
+            <li>Follow up recent contact leads within 24 hours.</li>
+            <li>Create more cybersecurity project content to improve engagement.</li>
+            <li>Monitor failed login activity and suspicious IP patterns.</li>
+            <li>Optimize top page <b>${topPage}</b> for better conversions.</li>
+            <li>Keep tracking visitors from <b>${topCity}</b> audience segment.</li>
+          </ul>
         </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px">
-        <div style="background:white;border-radius:28px;padding:24px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
-          <h3 style="margin:0 0 12px;font-size:20px">🏙️ Top Cities</h3>
+        <div style="background:linear-gradient(135deg,#0f172a,#111827);border:1px solid rgba(103,232,249,.2);border-radius:30px;padding:26px">
+          <h2 style="margin:0 0 12px;color:#67e8f9">🏙️ Visitor Intelligence</h2>
           ${listRows(topCities, "📍") || "<p>No city data</p>"}
         </div>
-        <div style="background:white;border-radius:28px;padding:24px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
-          <h3 style="margin:0 0 12px;font-size:20px">🌐 Top Browsers</h3>
+        <div style="background:linear-gradient(135deg,#0f172a,#111827);border:1px solid rgba(167,139,250,.2);border-radius:30px;padding:26px">
+          <h2 style="margin:0 0 12px;color:#ddd6fe">🌐 Browser Intelligence</h2>
           ${listRows(topBrowsers, "🧭") || "<p>No browser data</p>"}
         </div>
       </div>
 
-      <div style="background:white;border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
-        <h2 style="margin:0 0 14px">🌍 Recent Visitor Intelligence</h2>
-        <table style="width:100%;border-collapse:collapse;font-size:14px">
-          <tr style="color:#64748b;text-align:left">
-            <th style="padding:14px;border-bottom:2px solid #e5e7eb">Location</th>
-            <th style="padding:14px;border-bottom:2px solid #e5e7eb">System</th>
-            <th style="padding:14px;border-bottom:2px solid #e5e7eb;text-align:right">Page</th>
-          </tr>
-          ${visitorRows || "<tr><td style='padding:14px'>No recent visitors</td></tr>"}
-        </table>
+      <div style="background:linear-gradient(135deg,#0f172a,#111827);border:1px solid rgba(245,158,11,.25);border-radius:30px;padding:26px;margin-top:18px">
+        <h2 style="margin:0 0 16px;color:#fbbf24">💰 Lead Intelligence</h2>
+        ${leadRows || "<p style='color:#94a3b8;font-weight:800'>No recent leads.</p>"}
       </div>
 
-      <div style="background:linear-gradient(135deg,#f8fafc,#ffffff);border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.09)">
-        <h2 style="margin:0 0 14px">📩 Lead Intelligence</h2>
-        ${messageRows || "<p style='color:#64748b;font-weight:800'>No recent leads.</p>"}
-      </div>
-
-      <div style="background:#020617;color:white;border-radius:30px;padding:26px;margin-top:18px;box-shadow:0 20px 55px rgba(15,23,42,.18)">
-        <h2 style="margin:0 0 14px">🛡️ Security Operations Center</h2>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-          <div style="background:white10;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px"><b>Failed Logins</b><br/><span style="font-size:28px;font-weight:1000">${failedLoginCount}</span></div>
-          <div style="background:white10;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px"><b>Threat Level</b><br/><span style="font-size:28px;font-weight:1000">${threatLevel}</span></div>
-          <div style="background:white10;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px"><b>Backend</b><br/><span style="font-size:28px;font-weight:1000;color:#86efac">ONLINE</span></div>
+      <div style="background:linear-gradient(135deg,#190b0b,#0f172a);border:1px solid rgba(248,113,113,.28);border-radius:30px;padding:26px;margin-top:18px">
+        <h2 style="margin:0 0 18px;color:#fca5a5">🛡️ Security Operations Center</h2>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div style="background:#020617;border-radius:18px;padding:16px"><b>Failed Logins</b><br/><span style="font-size:30px;font-weight:1000;color:white">${failedLoginCount}</span></div>
+          <div style="background:#020617;border-radius:18px;padding:16px"><b>Security Score</b><br/><span style="font-size:30px;font-weight:1000;color:#86efac">${securityScore}</span></div>
+          <div style="background:#020617;border-radius:18px;padding:16px"><b>Threat</b><br/><span style="font-size:30px;font-weight:1000;color:#fbbf24">${threatLevel}</span></div>
+          <div style="background:#020617;border-radius:18px;padding:16px"><b>Backend</b><br/><span style="font-size:24px;font-weight:1000;color:#86efac">ONLINE</span></div>
         </div>
       </div>
 
-      <div style="text-align:center;color:#64748b;font-size:13px;font-weight:900;margin:26px 0">
-        Generated by <b>NS.ai</b> • Portfolio Intelligence Platform<br/>
+      <div style="text-align:center;color:#94a3b8;font-size:13px;font-weight:900;margin:28px 0">
+        Generated by <b style="color:#67e8f9">NS.ai</b> • Portfolio Intelligence Platform<br/>
         Developed by Naitik Soni • Cybersecurity Engineer • Ethical Hacker
       </div>
     </div>
