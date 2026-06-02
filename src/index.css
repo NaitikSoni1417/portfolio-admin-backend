@@ -300,3 +300,11 @@ button:active {
   width: 0px;
   height: 0px;
 }
+
+.ns-ai-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.ns-ai-scroll::-webkit-scrollbar {
+  display: none;
+}

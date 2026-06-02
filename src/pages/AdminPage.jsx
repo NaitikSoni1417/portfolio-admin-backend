@@ -794,11 +794,12 @@ function VisitorBox({ title, value }) {
 
 
 
+
 function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics }) {
   const [messages, setMessages] = useState([
     {
       role: "ai",
-      text: "Hi Naitik, I am NS.ai — your real AI admin agent. Ask me about visitors, traffic, messages, security logs, suspicious IPs, website health, or growth."
+      text: "Hi Naitik, I am NS.ai — your real AI admin agent. I can analyze traffic, messages, visitors, security logs, suspicious IPs, growth, and website health in Gujarati, Hindi, or English."
     }
   ]);
   const [input, setInput] = useState("");
@@ -837,66 +838,81 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
 
   const askAI = async (q = input) => {
     if (!q.trim()) return;
-
-    const userMsg = { role: "user", text: q };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { role: "user", text: q }]);
     setInput("");
     setThinking(true);
 
     try {
       const res = await fetch(`${API_URL}/api/admin/ns-ai`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          question: q,
-          dashboard: data,
-          security,
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ question: q, dashboard: data, security }),
       });
 
       const result = await res.json();
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: result.answer || result.error || "NS.ai could not answer right now."
-        }
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "ai", text: "NS.ai connection failed. Check backend Render deploy and GEMINI_API_KEY." }
-      ]);
+      setMessages((prev) => [...prev, { role: "ai", text: result.answer || result.error || "NS.ai could not answer right now." }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: "ai", text: "NS.ai connection failed. Please check backend deployment." }]);
     } finally {
       setThinking(false);
     }
   };
 
+  const miniStats = [
+    ["Visitors", data?.totalVisitors || 0],
+    ["Today", data?.todayViews || 0],
+    ["Messages", data?.totalMessages || 0],
+    ["Security", security?.failedLoginCount || 0],
+  ];
+
   return (
-    <section className="mt-6 overflow-hidden rounded-[2.3rem] border border-slate-800 bg-[#020617] text-white shadow-2xl">
-      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-blue-950 to-slate-950 p-7">
-        <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300">
-          REAL AI ADMIN AGENT
-        </p>
-        <h2 className="mt-3 text-4xl font-black">NS.ai Command Chat</h2>
-        <p className="mt-2 max-w-3xl font-semibold text-slate-300">
-          Ask in Gujarati, Hindi, or English. NS.ai analyzes your admin panel every 5 seconds using visitors, messages, traffic, and security logs.
-        </p>
+    <section className="mt-6 overflow-hidden rounded-[2.5rem] border border-slate-800 bg-[#020617] text-white shadow-[0_30px_100px_rgba(2,6,23,0.45)]">
+      <div className="relative overflow-hidden border-b border-white/10 bg-gradient-to-br from-slate-950 via-[#081a3a] to-slate-950 p-7">
+        <div className="absolute right-10 top-0 h-48 w-48 rounded-full bg-cyan-400/20 blur-3xl" />
+        <div className="absolute left-1/2 top-10 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl" />
+
+        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-500 text-2xl shadow-lg shadow-cyan-500/20">
+                ✦
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.35em] text-cyan-300">REAL AI ADMIN AGENT</p>
+                <h2 className="mt-1 text-4xl font-black tracking-tight">NS.ai Intelligence Core</h2>
+              </div>
+            </div>
+            <p className="mt-4 max-w-3xl font-semibold text-slate-300">
+              Real-time AI assistant analyzing visitors, messages, traffic, security logs and growth every 5 seconds.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {miniStats.map(([k, v]) => (
+              <div key={k} className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 backdrop-blur">
+                <p className="text-xs font-bold text-slate-400">{k}</p>
+                <h3 className="mt-1 text-2xl font-black">{v}</h3>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-0 xl:grid-cols-[1fr_360px]">
-        <div className="flex h-[650px] flex-col">
-          <div className="flex-1 space-y-5 overflow-y-auto p-6">
+      <div className="grid xl:grid-cols-[1fr_360px]">
+        <div className="flex h-[680px] flex-col bg-[#020617]">
+          <div className="flex-1 space-y-5 overflow-y-auto p-6 ns-ai-scroll">
             {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[82%] rounded-[1.5rem] px-5 py-4 text-sm font-semibold leading-relaxed ${
+              <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                {m.role === "ai" && (
+                  <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-500 text-sm font-black">
+                    AI
+                  </div>
+                )}
+
+                <div className={`max-w-[78%] rounded-[1.6rem] px-5 py-4 text-[15px] font-semibold leading-relaxed shadow-xl ${
                   m.role === "user"
-                    ? "bg-cyan-400 text-slate-950"
-                    : "border border-white/10 bg-white/[0.06] text-slate-100"
+                    ? "bg-gradient-to-br from-cyan-300 to-blue-400 text-slate-950"
+                    : "border border-white/10 bg-white/[0.07] text-slate-100"
                 }`}>
                   <p className="whitespace-pre-wrap">{m.text}</p>
                 </div>
@@ -904,25 +920,28 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
             ))}
 
             {thinking && (
-              <div className="w-fit rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-4 text-sm font-black text-cyan-300">
-                NS.ai analyzing live admin data...
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-500 text-sm font-black">AI</div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.07] px-5 py-4 text-sm font-black text-cyan-300">
+                  NS.ai is analyzing live admin data...
+                </div>
               </div>
             )}
           </div>
 
-          <div className="border-t border-white/10 p-5">
-            <div className="flex gap-3">
+          <div className="border-t border-white/10 bg-slate-950/70 p-5">
+            <div className="flex gap-3 rounded-[1.7rem] border border-white/10 bg-white/[0.06] p-2">
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && askAI()}
                 placeholder="Ask NS.ai anything about your admin panel..."
-                className="flex-1 rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-4 font-semibold text-white outline-none placeholder:text-slate-500 focus:border-cyan-300"
+                className="flex-1 bg-transparent px-4 py-3 font-semibold text-white outline-none placeholder:text-slate-500"
               />
               <button
                 onClick={() => askAI()}
                 disabled={thinking}
-                className="rounded-2xl bg-cyan-400 px-6 py-4 font-black text-slate-950 disabled:opacity-50"
+                className="rounded-2xl bg-cyan-400 px-7 py-3 font-black text-slate-950 shadow-lg shadow-cyan-400/20 transition hover:scale-105 disabled:opacity-50"
               >
                 Ask
               </button>
@@ -931,14 +950,20 @@ function NSAIChat({ data, security, token, loadDashboard, loadAdvancedAnalytics 
         </div>
 
         <aside className="border-l border-white/10 bg-white/[0.035] p-5">
-          <h3 className="text-lg font-black">Premium Questions</h3>
-          <div className="mt-4 max-h-[580px] space-y-3 overflow-y-auto pr-1">
+          <div className="mb-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+            <p className="text-sm font-black text-emerald-300">● AI ONLINE</p>
+            <p className="mt-1 text-xs font-semibold text-slate-400">Live context refresh: 5 sec</p>
+          </div>
+
+          <h3 className="text-xl font-black">Premium Questions</h3>
+          <div className="mt-4 max-h-[540px] space-y-3 overflow-y-auto pr-1 ns-ai-scroll">
             {prompts.map((q) => (
               <button
                 key={q}
                 onClick={() => askAI(q)}
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-left text-sm font-bold text-slate-200 transition hover:border-cyan-300/50 hover:bg-cyan-300/10"
+                className="group w-full rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-left text-sm font-bold text-slate-200 transition hover:-translate-y-0.5 hover:border-cyan-300/50 hover:bg-cyan-300/10"
               >
+                <span className="mr-2 text-cyan-300">✦</span>
                 {q}
               </button>
             ))}
