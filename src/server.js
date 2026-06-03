@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -8,6 +9,10 @@ import requestIp from "request-ip";
 import { UAParser } from "ua-parser-js";
 
 dotenv.config();
+
+const genAI = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY
+);
 
 const app = express();
 app.set("trust proxy", true);
@@ -98,6 +103,98 @@ const securityLogSchema = new mongoose.Schema({
 const SecurityLog = mongoose.model("SecurityLog", securityLogSchema);
 
 const loginAttempts = new Map();
+
+const socFirewall = new Map();
+const socEvents = [];
+
+function addSocEvent(event) {
+  socEvents.unshift({
+    ...event,
+    createdAt: new Date()
+  });
+  if (socEvents.length > 300) socEvents.pop();
+}
+
+function socMiddleware(req, res, next) {
+  const ip = getClientIp(req, req.body?.publicIp || "");
+  const now = Date.now();
+  const windowMs = 30 * 1000;
+  const blockMs = 10 * 60 * 1000;
+
+  const item = socFirewall.get(ip) || {
+    hits: [],
+    blockedUntil: null,
+    score: 0
+  };
+
+  if (item.blockedUntil && now < item.blockedUntil) {
+    addSocEvent({
+      type: "AUTO_BLOCKED",
+      severity: "HIGH",
+      ip,
+      path: req.path,
+      reason: "Blocked by NS.ai SOC firewall"
+    });
+
+    return res.status(429).json({
+      error: "NS.ai SOC Firewall: Too many requests. IP temporarily blocked."
+    });
+  }
+
+  item.hits = item.hits.filter((t) => now - t < windowMs);
+  item.hits.push(now);
+
+  const hits = item.hits.length;
+
+  if (hits >= 80) {
+    item.blockedUntil = now + blockMs;
+    item.score = 100;
+
+    addSocEvent({
+      type: "POSSIBLE_DOS",
+      severity: "CRITICAL",
+      ip,
+      path: req.path,
+      reason: `${hits} requests in 30 seconds`
+    });
+
+    socFirewall.set(ip, item);
+
+    return res.status(429).json({
+      error: "NS.ai SOC Firewall: Possible DoS traffic blocked."
+    });
+  }
+
+  if (hits >= 45) {
+    item.score = 80;
+    addSocEvent({
+      type: "TRAFFIC_SPIKE",
+      severity: "HIGH",
+      ip,
+      path: req.path,
+      reason: `${hits} requests in 30 seconds`
+    });
+  } else if (hits >= 25) {
+    item.score = 55;
+    addSocEvent({
+      type: "SUSPICIOUS_TRAFFIC",
+      severity: "MEDIUM",
+      ip,
+      path: req.path,
+      reason: `${hits} requests in 30 seconds`
+    });
+  }
+
+  socFirewall.set(ip, item);
+  next();
+}
+
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) return socMiddleware(req, res, next);
+  next();
+});
+
+
 
 function getClientIp(req, publicIp = "") {
   const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
@@ -242,7 +339,7 @@ app.post("/api/track", async (req, res) => {
     try {
       const geoRes = await fetch(`https://ipwho.is/${ip}`);
       geo = await geoRes.json();
-    } catch {}
+    } catch { }
 
     await Visitor.create({
       ip,
@@ -302,7 +399,7 @@ async function lookupIpGeo(ip) {
         lng: d.lon || null
       };
     }
-  } catch {}
+  } catch { }
 
   try {
     const r = await fetch(`https://ipwho.is/${ip}`);
@@ -317,7 +414,7 @@ async function lookupIpGeo(ip) {
         lng: d.longitude || null
       };
     }
-  } catch {}
+  } catch { }
 
   try {
     const r = await fetch(`https://ipapi.co/${ip}/json/`);
@@ -332,7 +429,7 @@ async function lookupIpGeo(ip) {
         lng: d.longitude || null
       };
     }
-  } catch {}
+  } catch { }
 
   return fallback;
 }
@@ -343,15 +440,15 @@ async function getSecurityContext(req, ip, key = "") {
   const ua = req.headers["user-agent"] || "";
   const browser =
     ua.includes("Edg") ? "Edge" :
-    ua.includes("Chrome") ? "Chrome" :
-    ua.includes("Safari") ? "Safari" :
-    ua.includes("Firefox") ? "Firefox" : "Unknown";
+      ua.includes("Chrome") ? "Chrome" :
+        ua.includes("Safari") ? "Safari" :
+          ua.includes("Firefox") ? "Firefox" : "Unknown";
 
   const os =
     ua.includes("Mac") ? "macOS" :
-    ua.includes("Windows") ? "Windows" :
-    ua.includes("Android") ? "Android" :
-    ua.includes("iPhone") || ua.includes("iPad") ? "iOS" : "Unknown";
+      ua.includes("Windows") ? "Windows" :
+        ua.includes("Android") ? "Android" :
+          ua.includes("iPhone") || ua.includes("iPad") ? "iOS" : "Unknown";
 
   const device = /Mobi|Android|iPhone|iPad/i.test(ua) ? "mobile" : "Desktop";
 
@@ -708,6 +805,54 @@ app.delete("/api/admin/messages", auth, async (req, res) => {
 });
 
 
+
+app.get("/api/admin/soc", auth, async (req, res) => {
+  const now = Date.now();
+
+  const liveIps = [...socFirewall.entries()].map(([ip, data]) => ({
+    ip,
+    requestsLast30s: data.hits.filter((t) => now - t < 30000).length,
+    blocked: data.blockedUntil && now < data.blockedUntil,
+    blockedUntil: data.blockedUntil ? new Date(data.blockedUntil) : null,
+    score: data.score || 0
+  })).sort((a, b) => b.requestsLast30s - a.requestsLast30s);
+
+  const critical = socEvents.filter((e) => e.severity === "CRITICAL").length;
+  const high = socEvents.filter((e) => e.severity === "HIGH").length;
+  const medium = socEvents.filter((e) => e.severity === "MEDIUM").length;
+
+  const threatScore = Math.min(100, critical * 25 + high * 12 + medium * 5);
+
+  res.json({
+    threatScore,
+    threatLevel: threatScore >= 80 ? "CRITICAL" : threatScore >= 55 ? "HIGH" : threatScore >= 25 ? "MEDIUM" : "LOW",
+    activeIps: liveIps.length,
+    topIps: liveIps.slice(0, 10),
+    blockedIps: liveIps.filter((x) => x.blocked),
+    events: socEvents.slice(0, 80),
+    recommendation:
+      threatScore >= 80
+        ? "Critical traffic spike detected. Enable Cloudflare protection and keep SOC firewall active."
+        : threatScore >= 55
+        ? "High suspicious traffic detected. Monitor top IPs and failed login events."
+        : "Portfolio traffic looks stable. NS.ai SOC is actively monitoring."
+  });
+});
+
+app.post("/api/admin/soc/unblock", auth, async (req, res) => {
+  const { ip } = req.body;
+  if (!ip) return res.status(400).json({ error: "IP required" });
+  socFirewall.delete(ip);
+  addSocEvent({
+    type: "MANUAL_UNBLOCK",
+    severity: "LOW",
+    ip,
+    path: "/api/admin/soc/unblock",
+    reason: "Admin manually unblocked IP"
+  });
+  res.json({ success: true });
+});
+
 app.get("/api/admin/security-logs", auth, async (req, res) => {
   try {
     const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100).lean();
@@ -966,7 +1111,7 @@ async function sendDailyAdminReport() {
         <div style="font-weight:1000;color:#67e8f9">${x.count}</div>
       </div>
       <div style="height:8px;background:#1e293b;border-radius:999px;overflow:hidden;margin-top:9px">
-        <div style="height:8px;width:${Math.min(100, Math.max(8, Math.round((x.count / Math.max(1,totalVisitors)) * 100)))}%;background:linear-gradient(90deg,#06b6d4,#8b5cf6,#22c55e);border-radius:999px"></div>
+        <div style="height:8px;width:${Math.min(100, Math.max(8, Math.round((x.count / Math.max(1, totalVisitors)) * 100)))}%;background:linear-gradient(90deg,#06b6d4,#8b5cf6,#22c55e);border-radius:999px"></div>
       </div>
     </div>
   `).join("");
@@ -1017,11 +1162,11 @@ async function sendDailyAdminReport() {
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px">
         ${[
-          ["Today Views", todayViews, "👁️", "#06b6d4"],
-          ["Total Visitors", totalVisitors, "👥", "#22c55e"],
-          ["Messages", totalMessages, "📩", "#f59e0b"],
-          ["Security Score", securityScore, "🛡️", "#8b5cf6"],
-        ].map(([label, value, icon, color]) => `
+      ["Today Views", todayViews, "👁️", "#06b6d4"],
+      ["Total Visitors", totalVisitors, "👥", "#22c55e"],
+      ["Messages", totalMessages, "📩", "#f59e0b"],
+      ["Security Score", securityScore, "🛡️", "#8b5cf6"],
+    ].map(([label, value, icon, color]) => `
           <div style="background:linear-gradient(135deg,#0f172a,#111827);border:1px solid rgba(148,163,184,.22);border-radius:26px;padding:20px;box-shadow:0 18px 55px rgba(0,0,0,.25)">
             <div style="font-size:28px">${icon}</div>
             <div style="color:${color};font-weight:1000;font-size:12px;text-transform:uppercase;letter-spacing:.6px;margin-top:10px">${label}</div>
@@ -1084,19 +1229,19 @@ async function sendDailyAdminReport() {
         Developed by Naitik Soni • Cybersecurity Engineer • Ethical Hacker
       </div>
     </div>
-  </div>`;  const mailRes = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "NS.ai Reports <onboarding@resend.dev>",
-      to: process.env.REPORT_EMAIL,
-      subject: `NS.ai | Executive Portfolio Intelligence Report - ${new Date().toLocaleDateString("en-IN")}`,
-      html,
-    }),
-  });
+  </div>`; const mailRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "NS.ai Reports <onboarding@resend.dev>",
+        to: process.env.REPORT_EMAIL,
+        subject: `NS.ai | Executive Portfolio Intelligence Report - ${new Date().toLocaleDateString("en-IN")}`,
+        html,
+      }),
+    });
 
   const mailData = await mailRes.json();
 
@@ -1131,4 +1276,51 @@ setInterval(() => {
 
 
 const PORT = process.env.PORT || 5050;
+
+app.post("/api/ns-ai", async (req, res) => {
+  try {
+    const { message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ success: false, reply: "Message is required." });
+    }
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction: `You are NS.ai, a professional and friendly AI portfolio assistant developed by Naitik Soni.
+Your primary role is to answer questions only about:
+- Naitik Soni (ethical hacker, full stack developer, cybersecurity student at SVIT Vasad / GTU, handle: Naitik.infosec / NScyber1417)
+- Portfolio and its sections
+- Projects:
+  * NSphotoX (image OSINT / metadata forensics)
+  * WebinfoX (cyber reconnaissance, WHOIS, DNS, SSL, and OSINT workflows)
+  * NSMusic Air
+- Certificates (ethical hacking, Kali Linux, advanced cybersecurity, Red Team vs Blue Team, dark web awareness, Cyber Leelawat internship achievements)
+- Skills (cybersecurity, OSINT, recon, ethical hacking, Linux, Python, React, Node.js, secure web development, and reporting)
+- Contact information (naitik.infosec@gmail.com or contact form)
+- Cybersecurity journey
+- NS Indian Cyber Army (which he founded)
+
+Rules:
+1. Keep answers short, professional, and friendly.
+2. Answer only about Naitik Soni, his portfolio, and the topics listed above.
+3. If the user asks about unrelated topics, politely say: "NS.ai can only answer about Naitik Soni and his portfolio."`
+    });
+
+    const result = await model.generateContent(message);
+    const reply = result.response.text().trim();
+
+    res.json({
+      success: true,
+      reply
+    });
+  } catch (error) {
+    console.error("NS.ai Error:", error);
+    res.status(500).json({
+      success: false,
+      reply: "NS.ai is temporarily unavailable. Please try again later."
+    });
+  }
+});
+
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
