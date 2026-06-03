@@ -895,7 +895,16 @@ app.get("/api/admin/soc", auth, async (req, res) => {
     threatLevel: threatScore >= 80 ? "CRITICAL" : threatScore >= 55 ? "HIGH" : threatScore >= 25 ? "MEDIUM" : "LOW",
     activeIps: liveIps.length,
     topIps: liveIps.slice(0, 10),
-    blockedIps: liveIps.filter((x) => x.blocked),
+    blockedIps: [
+      ...(await BlockedIP.find().sort({ createdAt: -1 }).limit(100).lean()).map((x) => ({
+        ip: x.ip,
+        blocked: true,
+        manual: true,
+        reason: x.reason,
+        expiresAt: x.expiresAt
+      })),
+      ...liveIps.filter((x) => x.blocked)
+    ],
     events: socEvents.slice(0, 80),
     recommendation:
       threatScore >= 80
