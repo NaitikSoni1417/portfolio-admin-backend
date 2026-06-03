@@ -295,7 +295,7 @@ async function blockGuard(req, res, next) {
   next();
 }
 
-app.use("/api", blockGuard);
+// app.use("/api", blockGuard);
 
 function auth(req, res, next) {
   const token = req.headers.authorization?.replace("Bearer ", "");
