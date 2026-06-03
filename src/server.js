@@ -103,6 +103,8 @@ const loginAttempts = new Map();
 
 const socFirewall = new Map();
 const socEvents = [];
+const manualBlockedIps = new Set();
+let emergencyLockdown = false;
 
 function addSocEvent(event) {
   socEvents.unshift({
@@ -117,6 +119,11 @@ function socMiddleware(req, res, next) {
   const now = Date.now();
   const windowMs = 30 * 1000;
   const blockMs = 10 * 60 * 1000;
+
+  if (manualBlockedIps.has(ip)) {
+    addSocEvent({ type: "MANUAL_BLOCKED", severity: "HIGH", ip, path: req.path, reason: "IP manually blocked by admin" });
+    return res.status(429).json({ error: "NS.ai SOC Firewall: IP blocked by admin." });
+  }
 
   const item = socFirewall.get(ip) || {
     hits: [],
@@ -143,7 +150,11 @@ function socMiddleware(req, res, next) {
 
   const hits = item.hits.length;
 
-  if (hits >= 80) {
+  const blockLimit = emergencyLockdown ? 35 : 80;
+  const highLimit = emergencyLockdown ? 20 : 45;
+  const mediumLimit = emergencyLockdown ? 12 : 25;
+
+  if (hits >= blockLimit) {
     item.blockedUntil = now + blockMs;
     item.score = 100;
 
@@ -162,7 +173,7 @@ function socMiddleware(req, res, next) {
     });
   }
 
-  if (hits >= 45) {
+  if (hits >= highLimit) {
     item.score = 80;
     addSocEvent({
       type: "TRAFFIC_SPIKE",
@@ -171,7 +182,7 @@ function socMiddleware(req, res, next) {
       path: req.path,
       reason: `${hits} requests in 30 seconds`
     });
-  } else if (hits >= 25) {
+  } else if (hits >= mediumLimit) {
     item.score = 55;
     addSocEvent({
       type: "SUSPICIOUS_TRAFFIC",
@@ -821,6 +832,8 @@ app.get("/api/admin/soc", auth, async (req, res) => {
   const threatScore = Math.min(100, critical * 25 + high * 12 + medium * 5);
 
   res.json({
+    securityScore: Math.max(0, 100 - threatScore),
+    emergencyLockdown,
     threatScore,
     threatLevel: threatScore >= 80 ? "CRITICAL" : threatScore >= 55 ? "HIGH" : threatScore >= 25 ? "MEDIUM" : "LOW",
     activeIps: liveIps.length,
@@ -834,6 +847,39 @@ app.get("/api/admin/soc", auth, async (req, res) => {
         ? "High suspicious traffic detected. Monitor top IPs and failed login events."
         : "Portfolio traffic looks stable. NS.ai SOC is actively monitoring."
   });
+});
+
+
+app.post("/api/admin/soc/block", auth, async (req, res) => {
+  const { ip } = req.body;
+  if (!ip) return res.status(400).json({ error: "IP required" });
+
+  manualBlockedIps.add(ip);
+  addSocEvent({
+    type: "MANUAL_BLOCK",
+    severity: "HIGH",
+    ip,
+    path: "/api/admin/soc/block",
+    reason: "Admin manually blocked this IP"
+  });
+
+  res.json({ success: true });
+});
+
+app.post("/api/admin/soc/lockdown", auth, async (req, res) => {
+  emergencyLockdown = !!req.body.enabled;
+
+  addSocEvent({
+    type: emergencyLockdown ? "EMERGENCY_LOCKDOWN_ON" : "EMERGENCY_LOCKDOWN_OFF",
+    severity: emergencyLockdown ? "CRITICAL" : "LOW",
+    ip: req.ip,
+    path: "/api/admin/soc/lockdown",
+    reason: emergencyLockdown
+      ? "Emergency lockdown enabled by admin"
+      : "Emergency lockdown disabled by admin"
+  });
+
+  res.json({ success: true, emergencyLockdown });
 });
 
 app.post("/api/admin/soc/unblock", auth, async (req, res) => {
