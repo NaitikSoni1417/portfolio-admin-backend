@@ -121,6 +121,30 @@ const settingSchema = new mongoose.Schema({
   adminKey: String,
   maintenanceMode: { type: Boolean, default: false },
   liveTracking: { type: Boolean, default: true },
+  adminProfile: {
+    name: { type: String, default: "Naitik Soni" },
+    email: { type: String, default: "naitik.infosec@gmail.com" },
+    role: { type: String, default: "Portfolio Owner / Cybersecurity Admin" }
+  },
+  reportSettings: {
+    enabled: { type: Boolean, default: true },
+    reportEmail: { type: String, default: "naitik.infosec@gmail.com" },
+    reportTime: { type: String, default: "21:00" }
+  },
+  nsaiSettings: {
+    language: { type: String, default: "Hinglish" },
+    tone: { type: String, default: "Professional" },
+    voice: { type: Boolean, default: true }
+  },
+  alertSettings: {
+    failedLoginAlerts: { type: Boolean, default: true },
+    messageAlerts: { type: Boolean, default: true },
+    visitorAlerts: { type: Boolean, default: true }
+  },
+  themeSettings: {
+    accent: { type: String, default: "cyan" },
+    glass: { type: Boolean, default: true }
+  },
   adminLogs: [
     {
       action: String,
@@ -611,6 +635,66 @@ app.patch("/api/admin/command-center", auth, async (req, res) => {
   await setting.save();
 
   res.json({ success: true, setting });
+});
+
+
+app.get("/api/admin/settings", auth, async (req, res) => {
+  let setting = await Setting.findOne();
+  if (!setting) setting = await Setting.create({});
+  res.json(setting);
+});
+
+app.patch("/api/admin/settings", auth, async (req, res) => {
+  try {
+    let setting = await Setting.findOne();
+    if (!setting) setting = await Setting.create({});
+
+    const allowed = ["adminProfile", "reportSettings", "nsaiSettings", "alertSettings", "themeSettings"];
+
+    for (const key of allowed) {
+      if (req.body[key] && typeof req.body[key] === "object") {
+        setting[key] = { ...(setting[key]?.toObject?.() || setting[key] || {}), ...req.body[key] };
+      }
+    }
+
+    setting.adminLogs.push({
+      action: "Settings updated",
+      ip: req.ip
+    });
+
+    setting.updatedAt = new Date();
+    await setting.save();
+
+    res.json({ success: true, setting });
+  } catch (err) {
+    res.status(500).json({ error: "Settings update failed" });
+  }
+});
+
+app.delete("/api/admin/reset-data", auth, async (req, res) => {
+  try {
+    const confirm = req.body?.confirm;
+    if (confirm !== "RESET DATA") {
+      return res.status(400).json({ error: "Confirmation text mismatch" });
+    }
+
+    await Visitor.deleteMany({});
+    await Message.deleteMany({});
+    await SecurityLog.deleteMany({});
+
+    let setting = await Setting.findOne();
+    if (!setting) setting = await Setting.create({});
+    setting.adminLogs.push({
+      action: "DANGER: Admin reset analytics/messages/security data",
+      ip: req.ip
+    });
+    setting.updatedAt = new Date();
+    await setting.save();
+
+    res.json({ success: true, message: "All analytics, messages and security logs cleared" });
+  } catch {
+    res.status(500).json({ error: "Reset data failed" });
+  }
 });
 
 app.delete("/api/admin/visitors", auth, async (req, res) => {
