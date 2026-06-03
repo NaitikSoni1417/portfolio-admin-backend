@@ -1008,6 +1008,12 @@ app.post("/api/admin/ip/unblock", auth, async (req, res) => {
   }
 });
 
+
+app.delete("/api/admin/ip/clear-all", auth, async (req, res) => {
+  await BlockedIP.deleteMany({});
+  res.json({ success: true, message: "All blocked IPs cleared" });
+});
+
 app.get("/api/admin/ip/blocked", auth, async (req, res) => {
   const items = await BlockedIP.find().sort({ createdAt: -1 }).lean();
   res.json(items);
