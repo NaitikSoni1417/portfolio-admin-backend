@@ -99,6 +99,15 @@ const securityLogSchema = new mongoose.Schema({
 
 const SecurityLog = mongoose.model("SecurityLog", securityLogSchema);
 
+const blockedIpSchema = new mongoose.Schema({
+  ip: { type: String, required: true, unique: true },
+  reason: { type: String, default: "Blocked by NS.ai SOC" },
+  blockedBy: { type: String, default: "Admin" },
+  expiresAt: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now }
+});
+const BlockedIP = mongoose.model("BlockedIP", blockedIpSchema);
+
 const loginAttempts = new Map();
 
 const socFirewall = new Map();
@@ -266,6 +275,28 @@ async function getAdminKey() {
   return setting?.adminKey || process.env.ADMIN_KEY;
 }
 
+async function blockGuard(req, res, next) {
+  try {
+    const ip = getClientIp(req, req.body?.publicIp || "");
+    const blocked = await BlockedIP.findOne({ ip });
+
+    if (blocked) {
+      if (blocked.expiresAt && new Date(blocked.expiresAt) < new Date()) {
+        await BlockedIP.deleteOne({ ip });
+        return next();
+      }
+
+      return res.status(403).json({
+        error: "Blocked by NS.ai SOC",
+        contact: "naitik.infosec@gmail.com"
+      });
+    }
+  } catch {}
+  next();
+}
+
+app.use("/api", blockGuard);
+
 function auth(req, res, next) {
   const token = req.headers.authorization?.replace("Bearer ", "");
   if (!token) return res.status(401).json({ error: "No token" });
@@ -337,6 +368,32 @@ app.get("/", (req, res) => {
   res.send("Portfolio Admin Backend Running");
 });
 
+
+app.get("/api/security/check", async (req, res) => {
+  try {
+    const ip = cleanIp(req.query.ip || req.headers["x-forwarded-for"]?.split(",")[0] || req.ip);
+    const blocked = await BlockedIP.findOne({ ip });
+
+    if (blocked) {
+      if (blocked.expiresAt && new Date(blocked.expiresAt) < new Date()) {
+        await BlockedIP.deleteOne({ ip });
+        return res.json({ blocked: false });
+      }
+
+      return res.status(403).json({
+        blocked: true,
+        ip,
+        reason: blocked.reason,
+        expiresAt: blocked.expiresAt,
+        contact: "naitik.infosec@gmail.com"
+      });
+    }
+
+    res.json({ blocked: false, ip });
+  } catch {
+    res.json({ blocked: false });
+  }
+});
 
 app.post("/api/track", async (req, res) => {
   try {
@@ -894,6 +951,66 @@ app.post("/api/admin/soc/unblock", auth, async (req, res) => {
     reason: "Admin manually unblocked IP"
   });
   res.json({ success: true });
+});
+
+
+app.post("/api/admin/ip/block", auth, async (req, res) => {
+  try {
+    const { ip, duration = "permanent", reason = "Blocked by NS.ai SOC" } = req.body;
+    if (!ip) return res.status(400).json({ error: "IP required" });
+
+    let expiresAt = null;
+    const now = Date.now();
+
+    if (duration === "1h") expiresAt = new Date(now + 60 * 60 * 1000);
+    if (duration === "6h") expiresAt = new Date(now + 6 * 60 * 60 * 1000);
+    if (duration === "24h") expiresAt = new Date(now + 24 * 60 * 60 * 1000);
+    if (duration === "7d") expiresAt = new Date(now + 7 * 24 * 60 * 60 * 1000);
+
+    const item = await BlockedIP.findOneAndUpdate(
+      { ip },
+      { ip, reason, expiresAt, blockedBy: "Admin", createdAt: new Date() },
+      { upsert: true, new: true }
+    );
+
+    addSocEvent?.({
+      type: "IP_BLOCKED",
+      severity: duration === "permanent" ? "HIGH" : "MEDIUM",
+      ip,
+      path: "/api/admin/ip/block",
+      reason: `${ip} blocked for ${duration}`
+    });
+
+    res.json({ success: true, blocked: item });
+  } catch (err) {
+    res.status(500).json({ error: "Block IP failed" });
+  }
+});
+
+app.post("/api/admin/ip/unblock", auth, async (req, res) => {
+  try {
+    const { ip } = req.body;
+    if (!ip) return res.status(400).json({ error: "IP required" });
+
+    await BlockedIP.deleteOne({ ip });
+
+    addSocEvent?.({
+      type: "IP_UNBLOCKED",
+      severity: "LOW",
+      ip,
+      path: "/api/admin/ip/unblock",
+      reason: `${ip} manually unblocked`
+    });
+
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Unblock IP failed" });
+  }
+});
+
+app.get("/api/admin/ip/blocked", auth, async (req, res) => {
+  const items = await BlockedIP.find().sort({ createdAt: -1 }).lean();
+  res.json(items);
 });
 
 app.get("/api/admin/security-logs", auth, async (req, res) => {
