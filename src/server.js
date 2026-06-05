@@ -75,6 +75,22 @@ const messageSchema = new mongoose.Schema({
 });
 
 const Visitor = mongoose.model("Visitor", visitorSchema);
+
+const resumeDownloadSchema = new mongoose.Schema({
+  ip: String,
+  publicIp: String,
+  page: String,
+  city: String,
+  region: String,
+  country: String,
+  isp: String,
+  browser: String,
+  os: String,
+  device: String,
+  userAgent: String,
+  createdAt: { type: Date, default: Date.now }
+});
+const ResumeDownload = mongoose.model("ResumeDownload", resumeDownloadSchema);
 const Message = mongoose.model("Message", messageSchema);
 
 const securityLogSchema = new mongoose.Schema({
@@ -648,6 +664,64 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
+
+
+app.post("/api/resume-download", async (req, res) => {
+  try {
+    const userAgent = req.headers["user-agent"] || "";
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const ip = cleanIp(req.body.publicIp || forwardedIp || req.clientIp || req.ip);
+    const geo = await getGeo(ip);
+
+    const parser = new UAParser(userAgent);
+    const ua = parser.getResult();
+
+    const item = await ResumeDownload.create({
+      ip,
+      publicIp: req.body.publicIp || ip,
+      page: req.body.page || "/",
+      city: geo.city,
+      region: geo.region,
+      country: geo.country,
+      isp: geo.isp,
+      browser: ua.browser?.name || "Unknown",
+      os: ua.os?.name || "Unknown",
+      device: ua.device?.type || "Desktop",
+      userAgent
+    });
+
+    res.json({ success: true, download: item });
+  } catch (err) {
+    res.status(500).json({ error: "Resume download tracking failed" });
+  }
+});
+
+app.get("/api/admin/resume-downloads", auth, async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const total = await ResumeDownload.countDocuments();
+    const todayCount = await ResumeDownload.countDocuments({ createdAt: { $gte: today } });
+    const recent = await ResumeDownload.find().sort({ createdAt: -1 }).limit(100).lean();
+
+    const countries = await ResumeDownload.aggregate([
+      { $group: { _id: "$country", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 8 }
+    ]);
+
+    const cities = await ResumeDownload.aggregate([
+      { $group: { _id: "$city", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 8 }
+    ]);
+
+    res.json({ total, todayCount, recent, countries, cities });
+  } catch {
+    res.status(500).json({ error: "Resume downloads fetch failed" });
+  }
+});
 
 app.get("/api/admin/dashboard", auth, async (req, res) => {
   const totalVisitors = await Visitor.countDocuments();
