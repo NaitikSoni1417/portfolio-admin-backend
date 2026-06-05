@@ -871,6 +871,116 @@ app.delete("/api/admin/messages", auth, async (req, res) => {
 
 
 
+
+app.get("/api/admin/digital-twins", auth, async (req, res) => {
+  try {
+    const visitors = await Visitor.find().sort({ createdAt: -1 }).limit(800).lean();
+
+    const groups = {};
+    visitors.forEach((v) => {
+      const ip = v.ip || "Unknown";
+      if (!groups[ip]) {
+        groups[ip] = {
+          ip,
+          city: v.city || "Unknown",
+          country: v.country || "Unknown",
+          browser: v.browser || "Unknown",
+          os: v.os || "Unknown",
+          device: v.device || "Unknown",
+          pages: [],
+          visits: 0,
+          firstSeen: v.createdAt,
+          lastSeen: v.createdAt,
+        };
+      }
+
+      groups[ip].visits += 1;
+      groups[ip].pages.push(v.page || "/");
+      if (new Date(v.createdAt) > new Date(groups[ip].lastSeen)) groups[ip].lastSeen = v.createdAt;
+      if (new Date(v.createdAt) < new Date(groups[ip].firstSeen)) groups[ip].firstSeen = v.createdAt;
+    });
+
+    const twins = Object.values(groups).map((g) => {
+      const pageText = g.pages.join(" ").toLowerCase();
+      const uniquePages = [...new Set(g.pages)];
+
+      let recruiter = 0;
+      let client = 0;
+      let learner = 0;
+      let threat = 0;
+
+      if (pageText.includes("about")) recruiter += 15;
+      if (pageText.includes("skill")) recruiter += 20;
+      if (pageText.includes("experience")) recruiter += 25;
+      if (pageText.includes("resume")) recruiter += 30;
+      if (pageText.includes("contact")) recruiter += 15;
+
+      if (pageText.includes("project")) client += 30;
+      if (pageText.includes("service")) client += 25;
+      if (pageText.includes("contact")) client += 25;
+      if (g.visits >= 5) client += 15;
+
+      if (pageText.includes("project")) learner += 20;
+      if (pageText.includes("certificate")) learner += 20;
+      if (pageText.includes("blog")) learner += 20;
+      if (pageText.includes("cyber")) learner += 25;
+
+      if (pageText.includes("admin")) threat += 35;
+      if (g.visits >= 20) threat += 35;
+      if (g.visits >= 40) threat += 60;
+
+      recruiter = Math.min(99, recruiter);
+      client = Math.min(99, client);
+      learner = Math.min(99, learner);
+      threat = Math.min(99, threat);
+
+      const engagementScore = Math.min(100, uniquePages.length * 15 + Math.min(40, g.visits * 4));
+
+      let intent = "Normal Visitor";
+      let confidence = Math.max(recruiter, client, learner, threat, engagementScore);
+
+      if (threat >= 55) intent = "Suspicious User";
+      else if (recruiter >= client && recruiter >= learner && recruiter >= 45) intent = "Recruiter";
+      else if (client >= recruiter && client >= learner && client >= 45) intent = "Potential Client";
+      else if (learner >= 45) intent = "Cybersecurity Learner";
+      else if (engagementScore >= 65) intent = "High Engagement Visitor";
+
+      const heat =
+        threat >= 55 ? "Risk" :
+        engagementScore >= 80 || recruiter >= 65 || client >= 65 ? "Hot" :
+        engagementScore >= 45 ? "Warm" : "Cold";
+
+      const recommendation =
+        intent === "Recruiter" ? "High-value recruiter signal. Keep portfolio resume and experience section polished." :
+        intent === "Potential Client" ? "Potential client detected. Follow up if contact message appears." :
+        intent === "Suspicious User" ? "Suspicious behavior detected. Monitor this IP in SOC Panel." :
+        intent === "Cybersecurity Learner" ? "Learning-focused visitor. Projects and certificates are attracting attention." :
+        "Normal visitor behavior. Continue monitoring.";
+
+      return {
+        ...g,
+        pages: uniquePages.slice(0, 8),
+        scores: { recruiter, client, learner, threat, engagement: engagementScore },
+        intent,
+        confidence,
+        heat,
+        recommendation,
+      };
+    }).sort((a, b) => b.confidence - a.confidence).slice(0, 50);
+
+    res.json({
+      totalAnalysed: twins.length,
+      hotLeads: twins.filter((x) => x.heat === "Hot").length,
+      recruiters: twins.filter((x) => x.intent === "Recruiter").length,
+      clients: twins.filter((x) => x.intent === "Potential Client").length,
+      suspicious: twins.filter((x) => x.intent === "Suspicious User").length,
+      twins
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Digital Twin analysis failed" });
+  }
+});
+
 app.get("/api/admin/soc", auth, async (req, res) => {
   const now = Date.now();
 
