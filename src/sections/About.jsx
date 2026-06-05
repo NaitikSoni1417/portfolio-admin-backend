@@ -37,10 +37,10 @@ export default function About() {
   };
 
   const stats = [
-    { label: "Global Rank (THM)", value: "#25" },
+    { label: "Global Rank (THM)", value: "20%" },
     { label: "Success Rate", value: "100%" },
     { label: "Companies Secured", value: "10+" },
-    { label: "CGPA", value: "7.1" },
+    { label: "CPI", value: "6.9" },
   ];
 
   const skills = [
@@ -307,7 +307,7 @@ Attack Surface Analysis
             <p className="text-gray-400 leading-relaxed text-[17px] xl:text-[18px]">
               With a{" "}
               <span className="font-semibold text-white">
-                Global Rank of #25 on TryHackMe
+                Global Rank of 20% on TryHackMe
               </span>
               , I specialize in{" "}
               <span className="font-semibold text-[#1cd8d2]">

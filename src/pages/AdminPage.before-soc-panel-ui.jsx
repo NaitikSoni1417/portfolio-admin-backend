@@ -42,17 +42,7 @@ export default function AdminPage() {
   const [settingsStatus, setSettingsStatus] = useState("");
   const [settingsToast, setSettingsToast] = useState(null);
   const [settingsProgress, setSettingsProgress] = useState(0);
-  const [socData, setSocData] = useState(null);
-  const [digitalTwinData, setDigitalTwinData] = useState(null);
-  const [selectedTwin, setSelectedTwin] = useState(null);
-  const [blockedScreen, setBlockedScreen] = useState(null);
-  const [selectedBlockDuration, setSelectedBlockDuration] = useState("1h");
-  const [selectedSocIp, setSelectedSocIp] = useState(null);
-  const [currentAdminIp, setCurrentAdminIp] = useState("");
-  const [adminIpWarning, setAdminIpWarning] = useState(false);
   const [nsaiIntro, setNsaiIntro] = useState(false);
-  const [resumeData, setResumeData] = useState(null);
-  const [selectedResumeDownload, setSelectedResumeDownload] = useState(null);
 
   const saveAdminIp = async () => {
     try {
@@ -385,11 +375,8 @@ If you did NOT make this change, immediately review your admin security logs and
     ["Overview", <FiGrid />],
     ["Visitors", <FiUsers />],
     ["Messages", <FiInbox />],
-    ["Resume Downloads", <FiActivity />],
     ["Analytics", <FiTrendingUp />],
     ["Security Logs", <FiShield />],
-    ["SOC Panel", <FiShield />],
-    ["Digital Twin Lab", <FiActivity />],
     ["Devices", <FiSmartphone />],
     ["Earth View", <FiGlobe />],
     ["NS.ai", <FiActivity />],
@@ -522,176 +509,6 @@ If you did NOT make this change, immediately review your admin security logs and
     }
   };
 
-
-  useEffect(() => {
-    const loadCurrentAdminIp = async () => {
-      try {
-        const res = await fetch("https://api.ipify.org?format=json");
-        const data = await res.json();
-        setCurrentAdminIp(data.ip || "");
-      } catch {}
-    };
-
-    loadCurrentAdminIp();
-  }, []);
-
-  useEffect(() => {
-    const checkBlocked = async () => {
-      try {
-        const ipRes = await fetch("https://api.ipify.org?format=json");
-        const ipData = await ipRes.json();
-
-        const res = await fetch(`${API_URL}/api/security/check?ip=${ipData.ip}`);
-        const data = await res.json();
-
-        if (res.status === 403 || data.blocked) {
-          console.log("Blocked check ignored for admin recovery", data);
-          // // setBlockedScreen(data);
-        }
-      } catch {}
-    };
-
-    checkBlocked();
-  }, []);
-
-  const blockVisitorIp = async (ip, duration = selectedBlockDuration) => {
-    if (ip === currentAdminIp) {
-      setAdminIpWarning(true);
-      return;
-    }
-    await fetch(`${API_URL}/api/admin/ip/block`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        ip,
-        duration,
-        reason: "Blocked by NS.ai Admin Intelligence"
-      }),
-    });
-    await loadSocPanel?.();
-  };
-
-  const unblockVisitorIp = async (ip) => {
-    await fetch(`${API_URL}/api/admin/ip/unblock`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ ip }),
-    });
-    await loadSocPanel?.();
-  };
-
-  const loadDigitalTwins = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/digital-twins`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setDigitalTwinData(await res.json());
-    } catch (err) {
-      console.error("Digital Twin load failed:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (token && active === "Digital Twin Lab") {
-      loadDigitalTwins();
-      const t = setInterval(loadDigitalTwins, 5000);
-      return () => clearInterval(t);
-    }
-  }, [token, active]);
-
-  const loadResumeDownloads = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/resume-downloads`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setResumeData(await res.json());
-    } catch (err) {
-      console.error("Resume downloads load failed:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (token && active === "Resume Downloads") {
-      loadResumeDownloads();
-      const t = setInterval(loadResumeDownloads, 5000);
-      return () => clearInterval(t);
-    }
-  }, [token, active]);
-
-  const exportResumeDownloadsCSV = () => {
-    const rows = [
-      ["IP", "City", "Region", "Country", "ISP", "Browser", "OS", "Device", "Page", "Downloaded At"],
-      ...(resumeData?.recent || []).map((r) => [
-        r.ip || "",
-        r.city || "",
-        r.region || "",
-        r.country || "",
-        r.isp || "",
-        r.browser || "",
-        r.os || "",
-        r.device || "",
-        r.page || "",
-        r.createdAt ? new Date(r.createdAt).toLocaleString() : "",
-      ]),
-    ];
-    downloadCSV(rows, "resume-downloads.csv");
-  };
-
-  const loadSocPanel = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/soc`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setSocData(await res.json());
-    } catch (err) {
-      console.error("SOC load failed:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (token && active === "SOC Panel") {
-      loadSocPanel();
-      const t = setInterval(loadSocPanel, 5000);
-      return () => clearInterval(t);
-    }
-  }, [token, active]);
-
-  const blockSocIp = async (ip) => {
-    await fetch(`${API_URL}/api/admin/soc/block`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ip }),
-    });
-    await loadSocPanel();
-  };
-
-  const toggleSocLockdown = async () => {
-    await fetch(`${API_URL}/api/admin/soc/lockdown`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ enabled: !socData?.emergencyLockdown }),
-    });
-    await loadSocPanel();
-  };
-
-  const unblockSocIp = async (ip) => {
-    await fetch(`${API_URL}/api/admin/soc/unblock`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ ip }),
-    });
-    await loadSocPanel();
-  };
-
   const updateCommand = async (payload) => {
     try {
       await fetch(`${API_URL}/api/admin/command-center`, {
@@ -809,40 +626,6 @@ If you did NOT make this change, immediately review your admin security logs and
 
   return (
     <div id="admin-dashboard-root" data-theme={theme} className={`min-h-screen transition-colors duration-300 ${theme === "dark" ? "bg-[#020617] text-white" : "bg-[#f6f8ff] text-slate-950"}`}>
-      {blockedScreen && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#020617] p-5 text-white">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(239,68,68,.24),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(34,211,238,.22),transparent_35%)]" />
-
-          <div className="relative w-full max-w-xl rounded-[2.5rem] border border-red-400/30 bg-white/10 p-8 text-center shadow-[0_0_120px_rgba(239,68,68,.25)] backdrop-blur-2xl">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-red-500/20 text-5xl shadow-2xl">
-              🚫
-            </div>
-
-            <p className="mt-6 text-xs font-black tracking-[0.4em] text-red-300">
-              403 ACCESS DENIED
-            </p>
-
-            <h1 className="mt-3 text-4xl font-black">
-              Blocked by NS.ai Security Operations Center
-            </h1>
-
-            <p className="mt-4 text-sm font-bold leading-relaxed text-slate-300">
-              Your IP has been restricted by the administrator due to suspicious activity or security policy.
-            </p>
-
-            <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-5 text-left text-sm font-bold text-slate-300">
-              <p><span className="text-slate-500">IP:</span> {blockedScreen.ip || "Unknown"}</p>
-              <p className="mt-2"><span className="text-slate-500">Reason:</span> {blockedScreen.reason || "Blocked by NS.ai SOC"}</p>
-              <p className="mt-2"><span className="text-slate-500">Expires:</span> {blockedScreen.expiresAt ? new Date(blockedScreen.expiresAt).toLocaleString() : "Permanent"}</p>
-            </div>
-
-            <p className="mt-6 text-sm font-black text-cyan-300">
-              Contact: naitik.infosec@gmail.com
-            </p>
-          </div>
-        </div>
-      )}
-
       {nsaiIntro && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-hidden bg-[#020617] text-white">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,.28),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(139,92,246,.28),transparent_36%)]" />
@@ -932,304 +715,6 @@ If you did NOT make this change, immediately review your admin security logs and
         </div>
       )}
 
-
-
-      {adminIpWarning && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-md">
-          <div className="relative w-full max-w-xl overflow-hidden rounded-[2.5rem] border border-red-400/30 bg-slate-950 p-8 text-center text-white shadow-[0_0_100px_rgba(239,68,68,.35)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 via-orange-400 to-cyan-400" />
-
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-red-500/15 text-5xl shadow-[0_0_60px_rgba(239,68,68,.35)]">
-              🛡️
-            </div>
-
-            <p className="mt-6 text-xs font-black tracking-[0.35em] text-red-300">
-              NS.ai SECURITY PROTECTION
-            </p>
-
-            <h2 className="mt-3 text-4xl font-black">
-              Administrator IP Detected
-            </h2>
-
-            <p className="mx-auto mt-4 max-w-md text-sm font-bold leading-relaxed text-slate-300">
-              This IP is currently assigned to the active administrator session.
-              For security reasons, NS.ai does not allow blocking the current admin IP.
-            </p>
-
-            <div className="mt-6 grid gap-3 text-left text-sm font-black">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                IP: <span className="text-cyan-300">{currentAdminIp || "Current admin session"}</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                Status: <span className="text-emerald-300">Protected</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                Action: <span className="text-red-300">Block denied</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                Risk: <span className="text-orange-300">Self lockout prevented</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setAdminIpWarning(false)}
-              className="mt-7 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 px-6 py-4 font-black text-white shadow-lg transition hover:scale-[1.02]"
-            >
-              Continue Monitoring
-            </button>
-          </div>
-        </div>
-      )}
-      {selectedTwin && (
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-4 py-10 backdrop-blur-md">
-          <div className="relative w-full max-w-4xl overflow-hidden rounded-[2.5rem] border border-white/40 bg-white/95 p-8 shadow-[0_35px_120px_rgba(15,23,42,.40)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-violet-500 to-emerald-400" />
-
-            <button
-              onClick={() => setSelectedTwin(null)}
-              className="sticky ml-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-white shadow-lg transition hover:scale-110 hover:bg-red-500"
-            >
-              ✕
-            </button>
-
-            <div className="pr-28">
-              <p className="text-xs font-black tracking-[0.35em] text-cyan-600">NS.ai DIGITAL TWIN PROFILE</p>
-              <h2 className="mt-2 text-4xl font-black text-slate-950">{selectedTwin.intent}</h2>
-              <p className="mt-2 text-sm font-bold text-slate-500">
-                {selectedTwin.ip} • {selectedTwin.city}, {selectedTwin.country}
-              </p>
-
-              <div className={`mt-4 inline-flex rounded-full px-4 py-2 text-xs font-black ${
-                selectedTwin.heat === "Risk" ? "bg-orange-100 text-orange-700" :
-                selectedTwin.heat === "Hot" ? "bg-red-100 text-red-700" :
-                selectedTwin.heat === "Warm" ? "bg-yellow-100 text-yellow-700" :
-                "bg-slate-100 text-slate-600"
-              }`}>
-                {selectedTwin.heat} Visitor
-              </div>
-            </div>
-
-            <div className="mt-7 grid gap-4 md:grid-cols-4">
-              {[
-                ["Recruiter", selectedTwin.scores.recruiter],
-                ["Client", selectedTwin.scores.client],
-                ["Engagement", selectedTwin.scores.engagement],
-                ["Threat", selectedTwin.scores.threat],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-3xl bg-slate-950 p-5 text-white shadow-sm">
-                  <p className="text-xs font-black text-slate-400">{k}</p>
-                  <h3 className="mt-2 text-4xl font-black">{v}%</h3>
-                  <div className="mt-4 h-2 rounded-full bg-white/10">
-                    <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${v}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 rounded-[2rem] border border-cyan-100 bg-cyan-50 p-6">
-              <h3 className="text-xl font-black text-slate-950">🤖 NS.ai Recommendation</h3>
-              <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{selectedTwin.recommendation}</p>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">System Intelligence</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  {selectedTwin.browser} • {selectedTwin.os} • {selectedTwin.device}
-                </p>
-                <p className="mt-3 text-xs font-bold text-slate-400">
-                  Visits: {selectedTwin.visits || 0} • Last seen: {selectedTwin.lastSeen ? new Date(selectedTwin.lastSeen).toLocaleString() : "Unknown"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Visitor Journey</p>
-                <div className="mt-3 space-y-2">
-                  {(selectedTwin.pages || []).length === 0 && (
-                    <p className="text-sm font-bold text-slate-500">Unknown</p>
-                  )}
-                  {(selectedTwin.pages || []).map((page, i) => (
-                    <div key={i} className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2">
-                      <div className="h-2 w-2 rounded-full bg-cyan-500" />
-                      <span className="text-sm font-bold text-slate-700">{page}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button
-                onClick={() => {
-                  setSelectedTwin(null);
-                  setActive("SOC Panel");
-                }}
-                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white"
-              >
-                Open in SOC Panel
-              </button>
-              <button
-                onClick={() => setSelectedTwin(null)}
-                className="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-black text-slate-700"
-              >
-                Continue Monitoring
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {selectedResumeDownload && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md">
-          <div className="relative w-full max-w-3xl overflow-hidden rounded-[2.5rem] border border-white/40 bg-white p-8 shadow-[0_35px_120px_rgba(15,23,42,.40)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-violet-500 to-emerald-400" />
-
-            <button
-              onClick={() => setSelectedResumeDownload(null)}
-              className="absolute right-6 top-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-white shadow-lg transition hover:scale-110 hover:bg-red-500"
-            >
-              ✕
-            </button>
-
-            <p className="text-xs font-black tracking-[0.35em] text-cyan-600">
-              RESUME DOWNLOAD INTELLIGENCE
-            </p>
-
-            <h2 className="mt-2 pr-16 text-4xl font-black text-slate-950">
-              {selectedResumeDownload.ip || "Unknown IP"}
-            </h2>
-
-            <p className="mt-2 text-sm font-bold text-slate-500">
-              {selectedResumeDownload.city || "Unknown City"}, {selectedResumeDownload.country || "Unknown Country"}
-            </p>
-
-            <div className="mt-7 grid gap-4 md:grid-cols-3">
-              <div className="rounded-3xl bg-slate-950 p-5 text-white">
-                <p className="text-xs font-black text-slate-400">CITY</p>
-                <h3 className="mt-2 text-2xl font-black">{selectedResumeDownload.city || "Unknown"}</h3>
-              </div>
-              <div className="rounded-3xl bg-slate-100 p-5">
-                <p className="text-xs font-black text-slate-500">COUNTRY</p>
-                <h3 className="mt-2 text-2xl font-black text-slate-950">{selectedResumeDownload.country || "Unknown"}</h3>
-              </div>
-              <div className="rounded-3xl bg-emerald-50 p-5">
-                <p className="text-xs font-black text-slate-500">DEVICE</p>
-                <h3 className="mt-2 text-2xl font-black text-emerald-700">{selectedResumeDownload.device || "Desktop"}</h3>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">System</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  {selectedResumeDownload.browser || "Unknown"} • {selectedResumeDownload.os || "Unknown"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Network</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  ISP: {selectedResumeDownload.isp || "Unknown"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Downloaded From</p>
-                <p className="mt-2 break-all text-sm font-bold text-slate-500">
-                  {selectedResumeDownload.page || "/"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Downloaded At</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  {selectedResumeDownload.createdAt ? new Date(selectedResumeDownload.createdAt).toLocaleString() : "Unknown"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-[2rem] bg-cyan-50 p-6">
-              <h3 className="text-xl font-black text-slate-950">🤖 NS.ai Lead Insight</h3>
-              <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">
-                This visitor downloaded your resume, which indicates strong recruiter, hiring, collaboration, or professional interest.
-                Monitor this IP in visitor intelligence if repeated profile activity appears.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedSocIp && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-md">
-          <div className="w-full max-w-2xl overflow-hidden rounded-[2.5rem] border border-white/30 bg-white p-7 shadow-[0_35px_120px_rgba(15,23,42,.35)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-black tracking-[0.35em] text-cyan-600">NS.ai IP INTELLIGENCE</p>
-                <h2 className="mt-2 text-3xl font-black text-slate-950">{selectedSocIp.ip}</h2>
-                <p className="mt-1 text-sm font-bold text-slate-500">Realtime SOC visitor investigation panel</p>
-              </div>
-              <button onClick={() => setSelectedSocIp(null)} className="rounded-full bg-red-500 px-4 py-2 font-black text-white">
-                Close
-              </button>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="rounded-3xl bg-slate-950 p-5 text-white">
-                <p className="text-xs font-black text-slate-400">REQUESTS / 30S</p>
-                <h3 className="mt-2 text-4xl font-black">{selectedSocIp.requestsLast30s || 0}</h3>
-              </div>
-              <div className="rounded-3xl bg-slate-100 p-5">
-                <p className="text-xs font-black text-slate-500">RISK SCORE</p>
-                <h3 className="mt-2 text-4xl font-black text-slate-950">{selectedSocIp.score || 0}</h3>
-              </div>
-              <div className={`rounded-3xl p-5 ${selectedSocIp.blocked ? "bg-red-50" : "bg-emerald-50"}`}>
-                <p className="text-xs font-black text-slate-500">STATUS</p>
-                <h3 className={`mt-2 text-2xl font-black ${selectedSocIp.blocked ? "text-red-700" : "text-emerald-700"}`}>
-                  {selectedSocIp.blocked ? "Blocked" : "Allowed"}
-                </h3>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-[2rem] border border-slate-200 bg-slate-50 p-5">
-              <h3 className="font-black text-slate-950">NS.ai Analysis</h3>
-              <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">
-                {selectedSocIp.score >= 80
-                  ? "Critical traffic behavior detected. Recommended action: temporary block or panic mode if traffic continues."
-                  : selectedSocIp.score >= 55
-                  ? "High suspicious request pattern detected. Monitor closely and consider temporary block."
-                  : selectedSocIp.requestsLast30s >= 15
-                  ? "Elevated traffic activity detected. Keep monitoring this IP."
-                  : "No major suspicious activity detected. IP looks normal right now."}
-              </p>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-5">
-              {["1h", "6h", "24h", "7d", "permanent"].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => blockVisitorIp(selectedSocIp.ip, d)}
-                  className={`rounded-2xl px-4 py-3 text-xs font-black text-white ${
-                    selectedSocIp.ip === currentAdminIp ? "bg-slate-700 opacity-70" : "bg-red-600"
-                  }`}
-                >
-                  Block {d}
-                </button>
-              ))}
-            </div>
-
-            {selectedSocIp.blocked && (
-              <button
-                onClick={() => unblockVisitorIp(selectedSocIp.ip)}
-                className="mt-4 w-full rounded-2xl bg-emerald-600 px-5 py-4 font-black text-white"
-              >
-                Unblock IP
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       {!menuHidden && active !== "NS.ai" && (
       <Sidebar
         menu={menu}
@@ -1245,7 +730,7 @@ If you did NOT make this change, immediately review your admin security logs and
       />
       )}
 
-      <main className={`min-w-0 p-4 sm:p-5 md:p-8 ${menuHidden || active === "NS.ai" ? "" : "lg:ml-72"}`}>
+      <main className={`p-4 md:p-8 ${menuHidden || active === "NS.ai" ? "" : "lg:ml-72"}`}>
         {active !== "NS.ai" && (
         <header className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
@@ -1258,7 +743,7 @@ If you did NOT make this change, immediately review your admin security logs and
 
             <div>
               <p className="text-sm font-black text-slate-500">{active}</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">
+              <h1 className="mt-1 text-3xl font-black tracking-tight md:text-5xl">
                 Portfolio Dashboard
               </h1>
               <p className="mt-2 text-slate-500">
@@ -1267,7 +752,7 @@ If you did NOT make this change, immediately review your admin security logs and
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 sm:gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               onClick={() => setLiveRefresh(!liveRefresh)}
               className={`rounded-2xl px-4 py-3 text-sm font-black shadow-sm ${
@@ -1415,302 +900,8 @@ If you did NOT make this change, immediately review your admin security logs and
           ))}
         </section>
         )}
-        {active === "Digital Twin Lab" && (
-          <section className="mt-6 min-w-0 space-y-6">
-            <div className="rounded-[2.5rem] border border-cyan-300/20 bg-slate-950 p-8 text-white shadow-2xl">
-              <p className="text-xs font-black tracking-[0.4em] text-cyan-300">NS.ai BEHAVIOR INTELLIGENCE</p>
-              <h2 className="mt-3 text-4xl font-black md:text-5xl">Digital Twin Lab</h2>
-              <p className="mt-3 max-w-3xl text-sm font-bold text-slate-400">
-                AI-style visitor profiling: recruiter probability, client intent, engagement score, suspicious behavior and smart recommendations.
-              </p>
-            </div>
-
-            <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-              {[
-                ["Analysed", digitalTwinData?.totalAnalysed || 0],
-                ["Hot Leads", digitalTwinData?.hotLeads || 0],
-                ["Recruiters", digitalTwinData?.recruiters || 0],
-                ["Clients", digitalTwinData?.clients || 0],
-                ["Suspicious", digitalTwinData?.suspicious || 0],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-sm font-black text-slate-500">{k}</p>
-                  <h3 className="mt-3 text-4xl font-black text-slate-950">{v}</h3>
-                </div>
-              ))}
-            </section>
-
-            <div className="grid gap-5 xl:grid-cols-2">
-              {(digitalTwinData?.twins || []).map((twin) => (
-                <button
-                  key={twin.ip}
-                  onClick={() => setSelectedTwin(twin)}
-                  className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-black tracking-[0.25em] text-cyan-600">VISITOR DIGITAL TWIN</p>
-                      <h3 className="mt-2 text-2xl font-black text-slate-950">{twin.intent}</h3>
-                      <p className="mt-1 text-sm font-bold text-slate-500">{twin.ip} • {twin.city}, {twin.country}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {twin.scores.recruiter >= 80 && (
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
-                            🟢 Recruiter Detected
-                          </span>
-                        )}
-                        {twin.scores.client >= 80 && (
-                          <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-black text-cyan-700">
-                            💰 Potential Client
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-black ${
-                      twin.heat === "Hot" ? "bg-red-100 text-red-700" :
-                      twin.heat === "Warm" ? "bg-yellow-100 text-yellow-700" :
-                      twin.heat === "Risk" ? "bg-orange-100 text-orange-700" :
-                      "bg-slate-100 text-slate-600"
-                    }`}>
-                      {twin.heat}
-                    </span>
-                  </div>
-
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    {[
-                      ["Recruiter", twin.scores.recruiter],
-                      ["Client", twin.scores.client],
-                      ["Engagement", twin.scores.engagement],
-                      ["Threat", twin.scores.threat],
-                    ].map(([label, score]) => (
-                      <div key={label}>
-                        <div className="flex justify-between text-xs font-black text-slate-500">
-                          <span>{label}</span><span>{score}%</span>
-                        </div>
-                        <div className="mt-2 h-2 rounded-full bg-slate-100">
-                          <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${score}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <p className="mt-5 text-sm font-bold text-slate-600">{twin.recommendation}</p>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {active === "SOC Panel" && (
-          <section className="mt-6 min-w-0 space-y-6">
-            <div className={`rounded-[2.5rem] border p-7 text-white shadow-2xl transition-all duration-500 ${
-              socData?.threatLevel === "CRITICAL" ? "border-red-400 bg-gradient-to-br from-red-950 via-slate-950 to-black shadow-red-500/30 animate-pulse" :
-              socData?.threatLevel === "HIGH" ? "border-orange-400 bg-gradient-to-br from-orange-950 via-slate-950 to-black shadow-orange-500/20" :
-              socData?.threatLevel === "MEDIUM" ? "border-yellow-400 bg-gradient-to-br from-yellow-950 via-slate-950 to-black shadow-yellow-500/20" :
-              "border-cyan-300/20 bg-slate-950"
-            }`}>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-xs font-black tracking-[0.35em] text-cyan-300">NS.ai SECURITY OPERATIONS CENTER</p>
-                  <h2 className="mt-3 text-4xl font-black">Advanced SOC Panel</h2>
-                  <p className="mt-2 max-w-2xl text-sm font-bold text-slate-400">
-                    Real-time DoS detection, auto-block firewall, panic mode, attack feed, world threat map and security analytics.
-                  </p>
-                </div>
-
-                <button
-                  onClick={toggleSocLockdown}
-                  className={`rounded-[2rem] px-7 py-5 text-center font-black shadow-xl transition hover:scale-105 ${
-                    socData?.emergencyLockdown ? "bg-emerald-500 text-white" : "bg-red-600 text-white"
-                  }`}
-                >
-                  🚨 {socData?.emergencyLockdown ? "PANIC MODE ON" : "ENABLE PANIC MODE"}
-                </button>
-
-                <div className="rounded-[2rem] bg-white/10 px-6 py-5 text-center">
-                  <p className="text-xs font-black">THREAT LEVEL</p>
-                  <h3 className="mt-1 text-3xl font-black">{socData?.threatLevel || "LOW"}</h3>
-                  <p className="text-xs font-bold">Score: {socData?.threatScore || 0}/100</p>
-                </div>
-              </div>
-            </div>
-
-            <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-              {[
-                ["Threat Score", socData?.threatScore || 0, "Live SOC risk"],
-                ["Security Score", socData?.securityScore ?? 100, "Portfolio protection"],
-                ["Active IPs", socData?.activeIps || 0, "Tracked now"],
-                ["Blocked IPs", socData?.blockedIps?.length || 0, "Firewall blocked"],
-                ["Events", socData?.events?.length || 0, "Live attack feed"],
-              ].map(([title, value, note]) => (
-                <div key={title} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1">
-                  <p className="text-sm font-black text-slate-500">{title}</p>
-                  <h3 className="mt-3 text-4xl font-black text-slate-950">{value}</h3>
-                  <p className="mt-2 text-xs font-bold text-slate-400">{note}</p>
-                </div>
-              ))}
-            </section>
-
-            <div className="grid gap-6 xl:grid-cols-3">
-              <Card className="xl:col-span-2" title="Auto Block Firewall" desc="Top request IPs with real-time block controls" icon={<FiShield />}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="text-xs uppercase text-slate-400">
-                      <tr><th className="py-3">IP</th><th>Req / 30s</th><th>Score</th><th>Status</th><th>Action</th></tr>
-                    </thead>
-                    <tbody>
-                      {(socData?.topIps || []).map((ip) => (
-                        <tr key={ip.ip} className="border-t border-slate-100">
-                          <td className="py-4">
-                            <button
-                              onClick={() => setSelectedSocIp(ip)}
-                              className="font-black text-slate-950 underline decoration-cyan-400 decoration-2 underline-offset-4 hover:text-cyan-600"
-                            >
-                              {ip.ip}
-                              {ip.ip === currentAdminIp && (
-                                <span className="ml-2 rounded-full bg-cyan-100 px-2 py-1 text-[10px] font-black text-cyan-700">
-                                  ADMIN
-                                </span>
-                              )}
-                            </button>
-                          </td>
-                          <td className="font-bold">{ip.requestsLast30s}</td>
-                          <td className="font-bold">{ip.score}</td>
-                          <td><span className={`rounded-full px-3 py-1 text-xs font-black ${ip.blocked ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>{ip.blocked ? "Blocked" : "Allowed"}</span></td>
-                          <td>
-                            <div className="flex flex-wrap gap-2">
-                              <select
-                                value={selectedBlockDuration}
-                                onChange={(e) => setSelectedBlockDuration(e.target.value)}
-                                className="rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-black"
-                              >
-                                <option value="1h">1 Hour</option>
-                                <option value="6h">6 Hours</option>
-                                <option value="24h">24 Hours</option>
-                                <option value="7d">7 Days</option>
-                                <option value="permanent">Permanent</option>
-                              </select>
-
-                              {ip.ip === currentAdminIp ? (
-                                <button
-                                  onClick={() => setAdminIpWarning(true)}
-                                  className="rounded-xl bg-slate-700 px-3 py-2 text-xs font-black text-white opacity-80"
-                                >
-                                  🔒 Protected
-                                </button>
-                              ) : ip.blocked ? (
-                                <button onClick={() => unblockVisitorIp(ip.ip)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white">Unblock</button>
-                              ) : (
-                                <button onClick={() => blockVisitorIp(ip.ip)} className="rounded-xl bg-red-600 px-3 py-2 text-xs font-black text-white">Block IP</button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              <Card title="Security Score" desc="Portfolio protection health" icon={<FiActivity />}>
-                <div className="rounded-[2rem] bg-slate-950 p-6 text-center text-white">
-                  <div className="mx-auto flex h-32 w-32 items-center justify-center rounded-full border-[10px] border-emerald-400 text-4xl font-black">
-                    {socData?.securityScore ?? 100}
-                  </div>
-                  <p className="mt-4 text-sm font-bold text-slate-300">{socData?.recommendation}</p>
-                </div>
-              </Card>
-
-              <Card title="Blocked IP Manager" desc="Unblock blocked visitors" icon={<FiShield />}>
-                <div className="max-h-72 overflow-y-auto space-y-3">
-                  {(socData?.blockedIps || []).length === 0 && (
-                    <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                      No blocked IPs right now.
-                    </p>
-                  )}
-
-                  {(socData?.blockedIps || []).map((item, i) => (
-                    <div key={`${item.ip}-${i}`} className="rounded-2xl border border-red-100 bg-red-50 p-4">
-                      <p className="font-black text-red-700">
-                        {item.ip}
-                        {item.ip === currentAdminIp && (
-                          <span className="ml-2 rounded-full bg-cyan-100 px-2 py-1 text-[10px] font-black text-cyan-700">
-                            CURRENT ADMIN
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-1 text-xs font-bold text-red-500">
-                        {item.expiresAt ? `Expires: ${new Date(item.expiresAt).toLocaleString()}` : "Permanent block"}
-                      </p>
-                      <button
-                        onClick={() => unblockVisitorIp(item.ip)}
-                        className="mt-3 w-full rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white"
-                      >
-                        Unblock IP
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-2">
-              <Card title="World Attack Map 🌍" desc="Country-wise threat visibility from live visitor intelligence" icon={<FiGlobe />}>
-                <div className="grid gap-3">
-                  {(socData?.geoThreats || []).map((g) => (
-                    <div key={g.country} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-black text-slate-950">🌍 {g.country}</p>
-                          <p className="text-xs font-bold text-slate-500">{g.topCity} • {g.topBrowser}</p>
-                        </div>
-                        <span className={`rounded-full px-3 py-1 text-xs font-black ${g.risk === "HIGH" ? "bg-red-100 text-red-700" : g.risk === "MEDIUM" ? "bg-yellow-100 text-yellow-700" : "bg-emerald-100 text-emerald-700"}`}>{g.risk}</span>
-                      </div>
-                      <div className="mt-3 h-2 rounded-full bg-slate-200">
-                        <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${Math.min(100, g.requests)}%` }} />
-                      </div>
-                      <p className="mt-2 text-xs font-black text-slate-500">{g.requests} requests / 24h</p>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              <Card title="Attack Analytics Chart" desc="Suspicious, blocked and critical events trend" icon={<FiTrendingUp />}>
-                <div className="space-y-4">
-                  {(socData?.attackTrend || []).length === 0 && <p className="rounded-2xl bg-slate-50 p-5 font-bold text-slate-500">No attack trend yet.</p>}
-                  {(socData?.attackTrend || []).map((x) => (
-                    <div key={x.time}>
-                      <div className="flex justify-between text-xs font-black text-slate-500">
-                        <span>{x.time}</span><span>S:{x.suspicious} B:{x.blocked} C:{x.critical}</span>
-                      </div>
-                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full bg-gradient-to-r from-yellow-400 via-orange-500 to-red-600" style={{ width: `${Math.min(100, (x.suspicious + x.blocked + x.critical) * 18)}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-
-            <Card title="Live Attack Feed" desc="Real-time SOC security timeline" icon={<FiShield />}>
-              <div className="max-h-[430px] overflow-y-auto">
-                {(socData?.events || []).length === 0 && <p className="rounded-2xl bg-slate-50 p-5 font-bold text-slate-500">No SOC events yet. System is clean.</p>}
-                {(socData?.events || []).map((e, i) => (
-                  <div key={i} className="mb-3 rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div><p className="font-black text-slate-950">{e.type}</p><p className="mt-1 text-sm font-bold text-slate-500">{e.reason}</p></div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-black ${e.severity === "CRITICAL" ? "bg-red-100 text-red-700" : e.severity === "HIGH" ? "bg-orange-100 text-orange-700" : e.severity === "MEDIUM" ? "bg-yellow-100 text-yellow-700" : "bg-emerald-100 text-emerald-700"}`}>{e.severity}</span>
-                    </div>
-                    <p className="mt-3 text-xs font-bold text-slate-400">IP: {e.ip} • Path: {e.path} • {new Date(e.createdAt).toLocaleString()}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </section>
-        )}
-
-
         {active === "Settings" && (
-          <section className="mt-6 min-w-0 space-y-6">
+          <section className="mt-6 space-y-6">
             {settingsStatus && (
               <div className="hidden rounded-3xl border border-emerald-200 bg-emerald-50 px-6 py-4 font-black text-emerald-700 shadow-sm">
                 {settingsStatus}
@@ -1917,99 +1108,6 @@ If you did NOT make this change, immediately review your admin security logs and
             updateMessageStatus={updateMessageStatus}
             deleteMessage={deleteMessage}
           />
-        )}
-
-        {active === "Resume Downloads" && (
-          <section className="mt-6 min-w-0 space-y-6">
-            <div className="rounded-[2.5rem] border border-cyan-300/20 bg-slate-950 p-8 text-white shadow-2xl">
-              <p className="text-xs font-black tracking-[0.35em] text-cyan-300">RESUME INTELLIGENCE</p>
-              <h2 className="mt-3 text-4xl font-black">Resume Downloads</h2>
-              <p className="mt-2 max-w-3xl text-sm font-bold text-slate-400">
-                Track who downloaded your resume with IP, city, country, browser, device, ISP and timestamp.
-              </p>
-            </div>
-
-            <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["Total Downloads", resumeData?.total || 0, "All-time resume clicks"],
-                ["Today Downloads", resumeData?.todayCount || 0, "Downloaded today"],
-                ["Top Countries", resumeData?.countries?.length || 0, "Country sources"],
-                ["Recent Records", resumeData?.recent?.length || 0, "Latest downloaders"],
-              ].map(([title, value, note]) => (
-                <div key={title} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1">
-                  <p className="text-sm font-black text-slate-500">{title}</p>
-                  <h3 className="mt-3 text-4xl font-black text-slate-950">{value}</h3>
-                  <p className="mt-2 text-xs font-bold text-slate-400">{note}</p>
-                </div>
-              ))}
-            </section>
-
-            <div className="grid gap-6 xl:grid-cols-3">
-              <Card className="xl:col-span-2" title="Recent Resume Downloaders" desc="Click any IP to open SaaS intelligence popup" icon={<FiActivity />}>
-                <div className="mb-4 flex justify-end">
-                  <button
-                    onClick={exportResumeDownloadsCSV}
-                    className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white"
-                  >
-                    Export CSV
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="text-xs uppercase text-slate-400">
-                      <tr>
-                        <th className="py-3">IP</th>
-                        <th>Location</th>
-                        <th>Device</th>
-                        <th>Browser</th>
-                        <th>Downloaded</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(resumeData?.recent || []).map((r, i) => (
-                        <tr key={r._id || i} className="border-t border-slate-100">
-                          <td className="py-4">
-                            <button
-                              onClick={() => setSelectedResumeDownload(r)}
-                              className="font-black text-slate-950 underline decoration-cyan-400 decoration-2 underline-offset-4 hover:text-cyan-600"
-                            >
-                              {r.ip || "Unknown"}
-                            </button>
-                          </td>
-                          <td className="font-bold text-slate-600">
-                            {r.city || "Unknown"}, {r.country || "Unknown"}
-                          </td>
-                          <td className="font-bold text-slate-600">{r.device || "Desktop"}</td>
-                          <td className="font-bold text-slate-600">{r.browser || "Unknown"}</td>
-                          <td className="text-slate-500">
-                            {r.createdAt ? new Date(r.createdAt).toLocaleString() : "Unknown"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {(resumeData?.recent || []).length === 0 && (
-                    <p className="rounded-2xl bg-slate-50 p-5 font-bold text-slate-500">No resume downloads yet.</p>
-                  )}
-                </div>
-              </Card>
-
-              <Card title="Top Locations" desc="Where resume interest is coming from" icon={<FiGlobe />}>
-                <div className="space-y-5">
-                  <div>
-                    <h3 className="mb-3 font-black text-slate-950">Countries</h3>
-                    <Ranking data={resumeData?.countries || []} />
-                  </div>
-                  <div>
-                    <h3 className="mb-3 font-black text-slate-950">Cities</h3>
-                    <Ranking data={resumeData?.cities || []} />
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </section>
         )}
 
         {active === "Analytics" && (
@@ -2857,7 +1955,7 @@ function SecurityLogs({ analytics, reloadSecurity }) {
   };
 
   return (
-    <section className="mt-6 min-w-0 space-y-6">
+    <section className="mt-6 space-y-6">
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <SecurityCard title="Failed Logins" value={analytics?.failedLoginCount || 0} note="Wrong admin password attempts" />
         <SecurityCard title="Blocked IPs" value={analytics?.blockedIps?.length || 0} note="Auto-blocked suspicious IPs" />
@@ -3049,7 +2147,7 @@ function SecurityCard({ title, value, note }) {
 function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unreadMessages}) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 flex h-dvh w-[18rem] max-w-[86vw] flex-col border-r border-slate-200 bg-white p-5 shadow-2xl transition-transform duration-300 lg:w-72 lg:p-6 lg:shadow-none lg:translate-x-0 ${
+      className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-slate-200 bg-white p-6 transition-transform duration-300 lg:translate-x-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       }`}
     >
@@ -3069,7 +2167,7 @@ function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unread
         </button>
       </div>
 
-      <nav className="mt-8 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 pb-4">
+      <nav className="mt-10 space-y-2">
         {menu.map(([name, icon]) => (
           <button
             key={name}
@@ -3077,7 +2175,7 @@ function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unread
               setActive(name);
               setSidebarOpen(false);
             }}
-            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-black transition lg:px-4 ${
+            className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black transition ${
               active === name
                 ? "bg-slate-950 text-white shadow-lg"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-950"
@@ -3095,7 +2193,7 @@ function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unread
         ))}
       </nav>
 
-      <div className="mt-3 shrink-0 rounded-3xl bg-slate-100 p-4">
+      <div className="absolute bottom-6 left-6 right-6 rounded-3xl bg-slate-100 p-4">
         <p className="text-sm font-black">System Online</p>
         <p className="mt-1 text-xs font-semibold text-slate-500">Backend + MongoDB connected</p>
         <div className="mt-3 flex items-center gap-2 text-sm font-black text-emerald-600">
@@ -3556,7 +2654,7 @@ function CommandCenter({
   };
 
   return (
-    <section className="mt-6 min-w-0 space-y-6">
+    <section className="mt-6 space-y-6">
       <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-sm font-black text-slate-400">CYBER OPERATIONS</p>
         <h2 className="mt-2 text-4xl font-black text-slate-950">Command Center</h2>

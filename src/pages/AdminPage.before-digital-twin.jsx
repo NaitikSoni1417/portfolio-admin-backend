@@ -43,16 +43,12 @@ export default function AdminPage() {
   const [settingsToast, setSettingsToast] = useState(null);
   const [settingsProgress, setSettingsProgress] = useState(0);
   const [socData, setSocData] = useState(null);
-  const [digitalTwinData, setDigitalTwinData] = useState(null);
-  const [selectedTwin, setSelectedTwin] = useState(null);
   const [blockedScreen, setBlockedScreen] = useState(null);
   const [selectedBlockDuration, setSelectedBlockDuration] = useState("1h");
   const [selectedSocIp, setSelectedSocIp] = useState(null);
   const [currentAdminIp, setCurrentAdminIp] = useState("");
   const [adminIpWarning, setAdminIpWarning] = useState(false);
   const [nsaiIntro, setNsaiIntro] = useState(false);
-  const [resumeData, setResumeData] = useState(null);
-  const [selectedResumeDownload, setSelectedResumeDownload] = useState(null);
 
   const saveAdminIp = async () => {
     try {
@@ -385,11 +381,9 @@ If you did NOT make this change, immediately review your admin security logs and
     ["Overview", <FiGrid />],
     ["Visitors", <FiUsers />],
     ["Messages", <FiInbox />],
-    ["Resume Downloads", <FiActivity />],
     ["Analytics", <FiTrendingUp />],
     ["Security Logs", <FiShield />],
     ["SOC Panel", <FiShield />],
-    ["Digital Twin Lab", <FiActivity />],
     ["Devices", <FiSmartphone />],
     ["Earth View", <FiGlobe />],
     ["NS.ai", <FiActivity />],
@@ -584,63 +578,6 @@ If you did NOT make this change, immediately review your admin security logs and
       body: JSON.stringify({ ip }),
     });
     await loadSocPanel?.();
-  };
-
-  const loadDigitalTwins = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/digital-twins`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setDigitalTwinData(await res.json());
-    } catch (err) {
-      console.error("Digital Twin load failed:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (token && active === "Digital Twin Lab") {
-      loadDigitalTwins();
-      const t = setInterval(loadDigitalTwins, 5000);
-      return () => clearInterval(t);
-    }
-  }, [token, active]);
-
-  const loadResumeDownloads = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/resume-downloads`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setResumeData(await res.json());
-    } catch (err) {
-      console.error("Resume downloads load failed:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (token && active === "Resume Downloads") {
-      loadResumeDownloads();
-      const t = setInterval(loadResumeDownloads, 5000);
-      return () => clearInterval(t);
-    }
-  }, [token, active]);
-
-  const exportResumeDownloadsCSV = () => {
-    const rows = [
-      ["IP", "City", "Region", "Country", "ISP", "Browser", "OS", "Device", "Page", "Downloaded At"],
-      ...(resumeData?.recent || []).map((r) => [
-        r.ip || "",
-        r.city || "",
-        r.region || "",
-        r.country || "",
-        r.isp || "",
-        r.browser || "",
-        r.os || "",
-        r.device || "",
-        r.page || "",
-        r.createdAt ? new Date(r.createdAt).toLocaleString() : "",
-      ]),
-    ];
-    downloadCSV(rows, "resume-downloads.csv");
   };
 
   const loadSocPanel = async () => {
@@ -980,185 +917,6 @@ If you did NOT make this change, immediately review your admin security logs and
           </div>
         </div>
       )}
-      {selectedTwin && (
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/60 px-4 py-10 backdrop-blur-md">
-          <div className="relative w-full max-w-4xl overflow-hidden rounded-[2.5rem] border border-white/40 bg-white/95 p-8 shadow-[0_35px_120px_rgba(15,23,42,.40)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-violet-500 to-emerald-400" />
-
-            <button
-              onClick={() => setSelectedTwin(null)}
-              className="sticky ml-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-white shadow-lg transition hover:scale-110 hover:bg-red-500"
-            >
-              ✕
-            </button>
-
-            <div className="pr-28">
-              <p className="text-xs font-black tracking-[0.35em] text-cyan-600">NS.ai DIGITAL TWIN PROFILE</p>
-              <h2 className="mt-2 text-4xl font-black text-slate-950">{selectedTwin.intent}</h2>
-              <p className="mt-2 text-sm font-bold text-slate-500">
-                {selectedTwin.ip} • {selectedTwin.city}, {selectedTwin.country}
-              </p>
-
-              <div className={`mt-4 inline-flex rounded-full px-4 py-2 text-xs font-black ${
-                selectedTwin.heat === "Risk" ? "bg-orange-100 text-orange-700" :
-                selectedTwin.heat === "Hot" ? "bg-red-100 text-red-700" :
-                selectedTwin.heat === "Warm" ? "bg-yellow-100 text-yellow-700" :
-                "bg-slate-100 text-slate-600"
-              }`}>
-                {selectedTwin.heat} Visitor
-              </div>
-            </div>
-
-            <div className="mt-7 grid gap-4 md:grid-cols-4">
-              {[
-                ["Recruiter", selectedTwin.scores.recruiter],
-                ["Client", selectedTwin.scores.client],
-                ["Engagement", selectedTwin.scores.engagement],
-                ["Threat", selectedTwin.scores.threat],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-3xl bg-slate-950 p-5 text-white shadow-sm">
-                  <p className="text-xs font-black text-slate-400">{k}</p>
-                  <h3 className="mt-2 text-4xl font-black">{v}%</h3>
-                  <div className="mt-4 h-2 rounded-full bg-white/10">
-                    <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${v}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 rounded-[2rem] border border-cyan-100 bg-cyan-50 p-6">
-              <h3 className="text-xl font-black text-slate-950">🤖 NS.ai Recommendation</h3>
-              <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{selectedTwin.recommendation}</p>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">System Intelligence</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  {selectedTwin.browser} • {selectedTwin.os} • {selectedTwin.device}
-                </p>
-                <p className="mt-3 text-xs font-bold text-slate-400">
-                  Visits: {selectedTwin.visits || 0} • Last seen: {selectedTwin.lastSeen ? new Date(selectedTwin.lastSeen).toLocaleString() : "Unknown"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Visitor Journey</p>
-                <div className="mt-3 space-y-2">
-                  {(selectedTwin.pages || []).length === 0 && (
-                    <p className="text-sm font-bold text-slate-500">Unknown</p>
-                  )}
-                  {(selectedTwin.pages || []).map((page, i) => (
-                    <div key={i} className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2">
-                      <div className="h-2 w-2 rounded-full bg-cyan-500" />
-                      <span className="text-sm font-bold text-slate-700">{page}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button
-                onClick={() => {
-                  setSelectedTwin(null);
-                  setActive("SOC Panel");
-                }}
-                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white"
-              >
-                Open in SOC Panel
-              </button>
-              <button
-                onClick={() => setSelectedTwin(null)}
-                className="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-black text-slate-700"
-              >
-                Continue Monitoring
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {selectedResumeDownload && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md">
-          <div className="relative w-full max-w-3xl overflow-hidden rounded-[2.5rem] border border-white/40 bg-white p-8 shadow-[0_35px_120px_rgba(15,23,42,.40)]">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400 via-violet-500 to-emerald-400" />
-
-            <button
-              onClick={() => setSelectedResumeDownload(null)}
-              className="absolute right-6 top-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-white shadow-lg transition hover:scale-110 hover:bg-red-500"
-            >
-              ✕
-            </button>
-
-            <p className="text-xs font-black tracking-[0.35em] text-cyan-600">
-              RESUME DOWNLOAD INTELLIGENCE
-            </p>
-
-            <h2 className="mt-2 pr-16 text-4xl font-black text-slate-950">
-              {selectedResumeDownload.ip || "Unknown IP"}
-            </h2>
-
-            <p className="mt-2 text-sm font-bold text-slate-500">
-              {selectedResumeDownload.city || "Unknown City"}, {selectedResumeDownload.country || "Unknown Country"}
-            </p>
-
-            <div className="mt-7 grid gap-4 md:grid-cols-3">
-              <div className="rounded-3xl bg-slate-950 p-5 text-white">
-                <p className="text-xs font-black text-slate-400">CITY</p>
-                <h3 className="mt-2 text-2xl font-black">{selectedResumeDownload.city || "Unknown"}</h3>
-              </div>
-              <div className="rounded-3xl bg-slate-100 p-5">
-                <p className="text-xs font-black text-slate-500">COUNTRY</p>
-                <h3 className="mt-2 text-2xl font-black text-slate-950">{selectedResumeDownload.country || "Unknown"}</h3>
-              </div>
-              <div className="rounded-3xl bg-emerald-50 p-5">
-                <p className="text-xs font-black text-slate-500">DEVICE</p>
-                <h3 className="mt-2 text-2xl font-black text-emerald-700">{selectedResumeDownload.device || "Desktop"}</h3>
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">System</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  {selectedResumeDownload.browser || "Unknown"} • {selectedResumeDownload.os || "Unknown"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Network</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  ISP: {selectedResumeDownload.isp || "Unknown"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Downloaded From</p>
-                <p className="mt-2 break-all text-sm font-bold text-slate-500">
-                  {selectedResumeDownload.page || "/"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-5">
-                <p className="font-black text-slate-950">Downloaded At</p>
-                <p className="mt-2 text-sm font-bold text-slate-500">
-                  {selectedResumeDownload.createdAt ? new Date(selectedResumeDownload.createdAt).toLocaleString() : "Unknown"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-[2rem] bg-cyan-50 p-6">
-              <h3 className="text-xl font-black text-slate-950">🤖 NS.ai Lead Insight</h3>
-              <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">
-                This visitor downloaded your resume, which indicates strong recruiter, hiring, collaboration, or professional interest.
-                Monitor this IP in visitor intelligence if repeated profile activity appears.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {selectedSocIp && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-md">
@@ -1245,7 +1003,7 @@ If you did NOT make this change, immediately review your admin security logs and
       />
       )}
 
-      <main className={`min-w-0 p-4 sm:p-5 md:p-8 ${menuHidden || active === "NS.ai" ? "" : "lg:ml-72"}`}>
+      <main className={`p-4 md:p-8 ${menuHidden || active === "NS.ai" ? "" : "lg:ml-72"}`}>
         {active !== "NS.ai" && (
         <header className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
@@ -1258,7 +1016,7 @@ If you did NOT make this change, immediately review your admin security logs and
 
             <div>
               <p className="text-sm font-black text-slate-500">{active}</p>
-              <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl">
+              <h1 className="mt-1 text-3xl font-black tracking-tight md:text-5xl">
                 Portfolio Dashboard
               </h1>
               <p className="mt-2 text-slate-500">
@@ -1267,7 +1025,7 @@ If you did NOT make this change, immediately review your admin security logs and
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 sm:gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               onClick={() => setLiveRefresh(!liveRefresh)}
               className={`rounded-2xl px-4 py-3 text-sm font-black shadow-sm ${
@@ -1415,93 +1173,8 @@ If you did NOT make this change, immediately review your admin security logs and
           ))}
         </section>
         )}
-        {active === "Digital Twin Lab" && (
-          <section className="mt-6 min-w-0 space-y-6">
-            <div className="rounded-[2.5rem] border border-cyan-300/20 bg-slate-950 p-8 text-white shadow-2xl">
-              <p className="text-xs font-black tracking-[0.4em] text-cyan-300">NS.ai BEHAVIOR INTELLIGENCE</p>
-              <h2 className="mt-3 text-4xl font-black md:text-5xl">Digital Twin Lab</h2>
-              <p className="mt-3 max-w-3xl text-sm font-bold text-slate-400">
-                AI-style visitor profiling: recruiter probability, client intent, engagement score, suspicious behavior and smart recommendations.
-              </p>
-            </div>
-
-            <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-              {[
-                ["Analysed", digitalTwinData?.totalAnalysed || 0],
-                ["Hot Leads", digitalTwinData?.hotLeads || 0],
-                ["Recruiters", digitalTwinData?.recruiters || 0],
-                ["Clients", digitalTwinData?.clients || 0],
-                ["Suspicious", digitalTwinData?.suspicious || 0],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-sm font-black text-slate-500">{k}</p>
-                  <h3 className="mt-3 text-4xl font-black text-slate-950">{v}</h3>
-                </div>
-              ))}
-            </section>
-
-            <div className="grid gap-5 xl:grid-cols-2">
-              {(digitalTwinData?.twins || []).map((twin) => (
-                <button
-                  key={twin.ip}
-                  onClick={() => setSelectedTwin(twin)}
-                  className="rounded-[2rem] border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-black tracking-[0.25em] text-cyan-600">VISITOR DIGITAL TWIN</p>
-                      <h3 className="mt-2 text-2xl font-black text-slate-950">{twin.intent}</h3>
-                      <p className="mt-1 text-sm font-bold text-slate-500">{twin.ip} • {twin.city}, {twin.country}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {twin.scores.recruiter >= 80 && (
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
-                            🟢 Recruiter Detected
-                          </span>
-                        )}
-                        {twin.scores.client >= 80 && (
-                          <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-black text-cyan-700">
-                            💰 Potential Client
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-black ${
-                      twin.heat === "Hot" ? "bg-red-100 text-red-700" :
-                      twin.heat === "Warm" ? "bg-yellow-100 text-yellow-700" :
-                      twin.heat === "Risk" ? "bg-orange-100 text-orange-700" :
-                      "bg-slate-100 text-slate-600"
-                    }`}>
-                      {twin.heat}
-                    </span>
-                  </div>
-
-                  <div className="mt-5 grid grid-cols-2 gap-3">
-                    {[
-                      ["Recruiter", twin.scores.recruiter],
-                      ["Client", twin.scores.client],
-                      ["Engagement", twin.scores.engagement],
-                      ["Threat", twin.scores.threat],
-                    ].map(([label, score]) => (
-                      <div key={label}>
-                        <div className="flex justify-between text-xs font-black text-slate-500">
-                          <span>{label}</span><span>{score}%</span>
-                        </div>
-                        <div className="mt-2 h-2 rounded-full bg-slate-100">
-                          <div className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${score}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <p className="mt-5 text-sm font-bold text-slate-600">{twin.recommendation}</p>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
         {active === "SOC Panel" && (
-          <section className="mt-6 min-w-0 space-y-6">
+          <section className="mt-6 space-y-6">
             <div className={`rounded-[2.5rem] border p-7 text-white shadow-2xl transition-all duration-500 ${
               socData?.threatLevel === "CRITICAL" ? "border-red-400 bg-gradient-to-br from-red-950 via-slate-950 to-black shadow-red-500/30 animate-pulse" :
               socData?.threatLevel === "HIGH" ? "border-orange-400 bg-gradient-to-br from-orange-950 via-slate-950 to-black shadow-orange-500/20" :
@@ -1710,7 +1383,7 @@ If you did NOT make this change, immediately review your admin security logs and
 
 
         {active === "Settings" && (
-          <section className="mt-6 min-w-0 space-y-6">
+          <section className="mt-6 space-y-6">
             {settingsStatus && (
               <div className="hidden rounded-3xl border border-emerald-200 bg-emerald-50 px-6 py-4 font-black text-emerald-700 shadow-sm">
                 {settingsStatus}
@@ -1917,99 +1590,6 @@ If you did NOT make this change, immediately review your admin security logs and
             updateMessageStatus={updateMessageStatus}
             deleteMessage={deleteMessage}
           />
-        )}
-
-        {active === "Resume Downloads" && (
-          <section className="mt-6 min-w-0 space-y-6">
-            <div className="rounded-[2.5rem] border border-cyan-300/20 bg-slate-950 p-8 text-white shadow-2xl">
-              <p className="text-xs font-black tracking-[0.35em] text-cyan-300">RESUME INTELLIGENCE</p>
-              <h2 className="mt-3 text-4xl font-black">Resume Downloads</h2>
-              <p className="mt-2 max-w-3xl text-sm font-bold text-slate-400">
-                Track who downloaded your resume with IP, city, country, browser, device, ISP and timestamp.
-              </p>
-            </div>
-
-            <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["Total Downloads", resumeData?.total || 0, "All-time resume clicks"],
-                ["Today Downloads", resumeData?.todayCount || 0, "Downloaded today"],
-                ["Top Countries", resumeData?.countries?.length || 0, "Country sources"],
-                ["Recent Records", resumeData?.recent?.length || 0, "Latest downloaders"],
-              ].map(([title, value, note]) => (
-                <div key={title} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1">
-                  <p className="text-sm font-black text-slate-500">{title}</p>
-                  <h3 className="mt-3 text-4xl font-black text-slate-950">{value}</h3>
-                  <p className="mt-2 text-xs font-bold text-slate-400">{note}</p>
-                </div>
-              ))}
-            </section>
-
-            <div className="grid gap-6 xl:grid-cols-3">
-              <Card className="xl:col-span-2" title="Recent Resume Downloaders" desc="Click any IP to open SaaS intelligence popup" icon={<FiActivity />}>
-                <div className="mb-4 flex justify-end">
-                  <button
-                    onClick={exportResumeDownloadsCSV}
-                    className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white"
-                  >
-                    Export CSV
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="text-xs uppercase text-slate-400">
-                      <tr>
-                        <th className="py-3">IP</th>
-                        <th>Location</th>
-                        <th>Device</th>
-                        <th>Browser</th>
-                        <th>Downloaded</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(resumeData?.recent || []).map((r, i) => (
-                        <tr key={r._id || i} className="border-t border-slate-100">
-                          <td className="py-4">
-                            <button
-                              onClick={() => setSelectedResumeDownload(r)}
-                              className="font-black text-slate-950 underline decoration-cyan-400 decoration-2 underline-offset-4 hover:text-cyan-600"
-                            >
-                              {r.ip || "Unknown"}
-                            </button>
-                          </td>
-                          <td className="font-bold text-slate-600">
-                            {r.city || "Unknown"}, {r.country || "Unknown"}
-                          </td>
-                          <td className="font-bold text-slate-600">{r.device || "Desktop"}</td>
-                          <td className="font-bold text-slate-600">{r.browser || "Unknown"}</td>
-                          <td className="text-slate-500">
-                            {r.createdAt ? new Date(r.createdAt).toLocaleString() : "Unknown"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {(resumeData?.recent || []).length === 0 && (
-                    <p className="rounded-2xl bg-slate-50 p-5 font-bold text-slate-500">No resume downloads yet.</p>
-                  )}
-                </div>
-              </Card>
-
-              <Card title="Top Locations" desc="Where resume interest is coming from" icon={<FiGlobe />}>
-                <div className="space-y-5">
-                  <div>
-                    <h3 className="mb-3 font-black text-slate-950">Countries</h3>
-                    <Ranking data={resumeData?.countries || []} />
-                  </div>
-                  <div>
-                    <h3 className="mb-3 font-black text-slate-950">Cities</h3>
-                    <Ranking data={resumeData?.cities || []} />
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </section>
         )}
 
         {active === "Analytics" && (
@@ -2857,7 +2437,7 @@ function SecurityLogs({ analytics, reloadSecurity }) {
   };
 
   return (
-    <section className="mt-6 min-w-0 space-y-6">
+    <section className="mt-6 space-y-6">
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <SecurityCard title="Failed Logins" value={analytics?.failedLoginCount || 0} note="Wrong admin password attempts" />
         <SecurityCard title="Blocked IPs" value={analytics?.blockedIps?.length || 0} note="Auto-blocked suspicious IPs" />
@@ -3049,7 +2629,7 @@ function SecurityCard({ title, value, note }) {
 function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unreadMessages}) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 flex h-dvh w-[18rem] max-w-[86vw] flex-col border-r border-slate-200 bg-white p-5 shadow-2xl transition-transform duration-300 lg:w-72 lg:p-6 lg:shadow-none lg:translate-x-0 ${
+      className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-slate-200 bg-white p-6 transition-transform duration-300 lg:translate-x-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       }`}
     >
@@ -3069,7 +2649,7 @@ function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unread
         </button>
       </div>
 
-      <nav className="mt-8 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 pb-4">
+      <nav className="mt-10 space-y-2">
         {menu.map(([name, icon]) => (
           <button
             key={name}
@@ -3077,7 +2657,7 @@ function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unread
               setActive(name);
               setSidebarOpen(false);
             }}
-            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-black transition lg:px-4 ${
+            className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black transition ${
               active === name
                 ? "bg-slate-950 text-white shadow-lg"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-950"
@@ -3095,7 +2675,7 @@ function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unread
         ))}
       </nav>
 
-      <div className="mt-3 shrink-0 rounded-3xl bg-slate-100 p-4">
+      <div className="absolute bottom-6 left-6 right-6 rounded-3xl bg-slate-100 p-4">
         <p className="text-sm font-black">System Online</p>
         <p className="mt-1 text-xs font-semibold text-slate-500">Backend + MongoDB connected</p>
         <div className="mt-3 flex items-center gap-2 text-sm font-black text-emerald-600">
@@ -3556,7 +3136,7 @@ function CommandCenter({
   };
 
   return (
-    <section className="mt-6 min-w-0 space-y-6">
+    <section className="mt-6 space-y-6">
       <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-sm font-black text-slate-400">CYBER OPERATIONS</p>
         <h2 className="mt-2 text-4xl font-black text-slate-950">Command Center</h2>

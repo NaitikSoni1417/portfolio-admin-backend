@@ -13,6 +13,8 @@ import {
 } from "react-icons/fa";
 
 import nsphotox from "../assets/nsphotox.png";
+import nsai from "../assets/nsai.png";
+import adminpanel from "../assets/adminpanel.png";
 import ParticlesBackground from "../components/ParticlesBackground";
 
 const projects = [
@@ -33,7 +35,7 @@ const projects = [
     ],
     tech: ["Python", "Flask", "OSINT", "EXIF", "OCR", "Forensics"],
     github: "https://github.com/NaitikSoni1417/NSphotoX.git",
-    live: "#",
+    live: null,
     repo: "NaitikSoni1417/NSphotoX",
     gradient: "from-lime-400 via-green-500 to-emerald-600",
   },
@@ -54,9 +56,38 @@ const projects = [
     ],
     tech: ["Python", "OSINT", "Recon", "Cyber Security", "WHOIS", "DNS"],
     github: "https://github.com/NaitikSoni1417/WebinfoX.git",
-    live: "#",
+    live: null,
     repo: "NaitikSoni1417/WebinfoX",
     gradient: "from-cyan-400 via-blue-500 to-red-500",
+  },
+  {
+    title: "NS.ai Security Operations Center",
+    category: "SOC • Cyber Defense",
+    status: "PRIVATE",
+    featured: true,
+    image: nsai,
+    icon: <FaShieldAlt />,
+    description:
+      "Private Security Operations Center with Digital Twin Intelligence, IP Intelligence, Threat Scoring, Resume Download Intelligence, Security Logs, Auto Block Firewall and Admin-Controlled Threat Monitoring.",
+    terminal: [],
+    tech: ["React", "Node.js", "MongoDB", "Express", "SOC", "Cyber Security"],
+    gradient: "from-red-500 via-orange-500 to-yellow-500",
+  },
+  {
+    title: "Portfolio Admin Analytics Platform",
+    category: "Analytics • Intelligence",
+    status: "PRIVATE",
+    featured: true,
+    image: adminpanel,
+    icon: <FaShieldAlt />,
+    description:
+      "Advanced admin analytics dashboard with real-time visitors, Earth View tracking, contact intelligence, resume download tracking, geolocation monitoring and security event analysis.",
+    terminal: [],
+    tech: ["React", "Node.js", "MongoDB", "Analytics", "Security", "Dashboard"],
+    github: null,
+    live: null,
+    repo: null,
+    gradient: "from-cyan-400 via-blue-500 to-purple-600",
   },
   {
     title: "NSMusic Air",
@@ -74,8 +105,8 @@ const projects = [
       "> Deployment Pending...",
     ],
     tech: ["React", "TypeScript", "Node.js", "PostgreSQL", "Tailwind"],
-    github: "#",
-    live: "#",
+    github: null,
+    live: null,
     repo: null,
     gradient: "from-[#1cd8d2] via-[#00bf8f] to-[#302b63]",
   },
@@ -232,25 +263,35 @@ function ProjectCard({ project, index }) {
           ))}
         </div>
 
-        <div className="mt-8 flex gap-4">
-          <a
-            href={project.github}
-            target="_blank"
-            rel="noreferrer"
-            className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 hover:bg-white/10 transition"
-          >
-            <FaGithub /> GitHub
-          </a>
+        {(project.github && project.github !== "#") || (project.live && project.live !== "#") ? (
+          <div className="mt-8 flex gap-4">
+            {project.github && project.github !== "#" && (
+              <a
+                href={project.github}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 hover:bg-white/10 transition"
+              >
+                <FaGithub /> GitHub
+              </a>
+            )}
 
-          <a
-            href={project.live}
-            target="_blank"
-            rel="noreferrer"
-            className={`flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r ${project.gradient} text-black font-black px-5 py-4 hover:scale-105 transition`}
-          >
-            <FaExternalLinkAlt /> Live
-          </a>
-        </div>
+            {project.live && project.live !== "#" && (
+              <a
+                href={project.live}
+                target="_blank"
+                rel="noreferrer"
+                className={`flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r ${project.gradient} text-black font-black px-5 py-4 hover:scale-105 transition`}
+              >
+                <FaExternalLinkAlt /> Live
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-center text-sm font-bold text-zinc-400">
+            Private / Internal Project
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -279,7 +320,7 @@ export default function Projects() {
           className="text-center mb-18"
         >
           <p className="text-[#1cd8d2] tracking-[0.35em] text-sm font-bold mb-4">
-            CYBER LAB • FULL STACK • OSINT
+            CYBER SECURITY • SOC • OSINT • FULL STACK
           </p>
 
           <h2 className="text-5xl md:text-7xl font-black bg-clip-text text-transparent bg-gradient-to-r from-[#1cd8d2] via-[#00bf8f] to-[#302b63]">
@@ -292,7 +333,7 @@ export default function Projects() {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
           {projects.map((project, index) => (
             <ProjectCard
               key={project.title}

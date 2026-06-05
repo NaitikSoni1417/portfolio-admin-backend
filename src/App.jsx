@@ -13,6 +13,7 @@ import Footer from "./sections/Footer";
 import CustomCursor from "./components/CustomCursor";
 import IntroAnimation from "./components/IntroAnimation";
 import AdminPage from "./pages/AdminPage";
+import NSAIButton from "./components/NSAIButton";
 
 function Portfolio() {
   const [introDone, setIntroDone] = React.useState(false);
@@ -33,6 +34,7 @@ function Portfolio() {
           <Certificates />
           <Contact />
           <Footer />
+          <NSAIButton />
         </div>
       )}
     </>

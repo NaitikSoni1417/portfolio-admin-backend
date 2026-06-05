@@ -2,38 +2,32 @@ import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import ParticlesBackground from "../components/ParticlesBackground";
 
-import {
-  FaGithub,
-  FaLinkedin,
-  FaWhatsapp,
-} from "react-icons/fa";
-
+import { FaGithub, FaLinkedin, FaWhatsapp } from "react-icons/fa";
 import { MdEmail } from "react-icons/md";
 
 import avator from "../assets/avator.png";
+
+const RESUME_URL = "/certificates/Naitik_Soni_Resume.pdf";
 
 const socials = [
   {
     Icon: FaLinkedin,
     label: "LinkedIn",
-    href: "https://linkedin.com/in/naitiksoni1417",
+    href: "https://www.linkedin.com/in/naitiksoni1417",
   },
-
   {
     Icon: FaGithub,
     label: "GitHub",
     href: "https://github.com/NaitikSoni1417",
   },
-
   {
     Icon: MdEmail,
     label: "Email",
     href: "mailto:naitik.infosec@gmail.com",
   },
-
   {
     Icon: FaWhatsapp,
-    label: "WhatsApp",
+    label: "WhatsApp Channel",
     href: "https://whatsapp.com/channel/0029Vb6pxgWAjPXVeX5PCf2a",
   },
 ];
@@ -44,24 +38,20 @@ const glowVariants = {
     y: 0,
     filter: "drop-shadow(0 0 0 rgba(0,0,0,0))",
   },
-
   hover: {
     scale: 1.2,
     y: -3,
     filter:
       "drop-shadow(0 0 8px rgba(13,88,204,0.9)) drop-shadow(0 0 18px rgba(16,185,129,0.8))",
-
     transition: {
       type: "spring",
       stiffness: 300,
       damping: 15,
     },
   },
-
   tap: {
     scale: 0.9,
     y: 0,
-
     transition: {
       duration: 0.08,
     },
@@ -76,7 +66,7 @@ export default function Home() {
       "Penetration Tester",
       "Bug Bounty Hunter",
       "Full Stack Web Developer",
-      "NS Indian Cyber Army's Founder",
+      "Founder of NS Indian Cyber Army's",
     ],
     []
   );
@@ -90,7 +80,6 @@ export default function Home() {
 
     if (!deleting && subIndex === currentRole.length) {
       const timeout = setTimeout(() => setDeleting(true), 1200);
-
       return () => clearTimeout(timeout);
     }
 
@@ -110,6 +99,33 @@ export default function Home() {
     return () => clearTimeout(timeout);
   }, [subIndex, index, deleting, roles]);
 
+  const downloadResume = async () => {
+    try {
+      const response = await fetch(RESUME_URL, { cache: "no-store" });
+
+      if (!response.ok) {
+        window.open(RESUME_URL, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      const blob = await response.blob();
+      const pdfBlob = new Blob([blob], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(pdfBlob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Naitik_Soni_Cybersecurity_Resume.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Resume download failed:", err);
+      window.open(RESUME_URL, "_blank", "noopener,noreferrer");
+    }
+  };
+
   return (
     <section
       id="home"
@@ -117,7 +133,6 @@ export default function Home() {
     >
       <ParticlesBackground />
 
-      {/* BACKGROUND GLOW */}
       <div className="absolute inset-0 pointer-events-none">
         <div
           className="
@@ -134,7 +149,7 @@ export default function Home() {
             blur-[100px] sm:blur-[130px] md:blur-[150px]
             animate-pulse
           "
-        ></div>
+        />
 
         <div
           className="
@@ -151,16 +166,12 @@ export default function Home() {
             blur-[100px] sm:blur-[130px] md:blur-[150px]
             animate-pulse delay-500
           "
-        ></div>
+        />
       </div>
 
       <div className="relative z-10 min-h-screen w-full max-w-7xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-2">
-
-        {/* LEFT SIDE CONTENT */}
         <div className="flex flex-col justify-center h-full text-center lg:text-left relative py-20">
           <div className="w-full lg:pr-24 mx-auto max-w-3xl">
-
-            {/* TYPEWRITER */}
             <motion.div
               className="mb-3 text-xl sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-white tracking-wide min-h-[1.6em]"
               initial={{ opacity: 0, y: 12 }}
@@ -168,11 +179,9 @@ export default function Home() {
               transition={{ duration: 0.6 }}
             >
               <span>{roles[index].substring(0, subIndex)}</span>
-
-              <span className="inline-block w-0.5 ml-1 bg-white h-7 sm:h-9 align-middle animate-pulse"></span>
+              <span className="inline-block w-0.5 ml-1 bg-white h-7 sm:h-9 align-middle animate-pulse" />
             </motion.div>
 
-            {/* MAIN HEADING */}
             <motion.h1
               className="
                 text-4xl sm:text-5xl md:text-6xl lg:text-7xl
@@ -190,62 +199,51 @@ export default function Home() {
             >
               Hello, I'm
               <br />
-
               <span className="text-white font-bold text-5xl sm:text-6xl md:text-7xl lg:text-8xl lg:whitespace-nowrap">
                 Naitik Soni
               </span>
             </motion.h1>
 
-            {/* DESCRIPTION */}
             <motion.p
-  className="mt-6 text-base sm:text-lg md:text-xl text-gray-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed"
-  initial={{ opacity: 0, y: 20 }}
-  animate={{ opacity: 1, y: 0 }}
-  transition={{ duration: 0.8, delay: 0.4 }}
->
-  <span className="font-semibold text-white">
-    Cybersecurity Engineer
-  </span>{" "}
-  (
-  <span className="font-semibold text-[#1cd8d2]">
-    NScyber1417
-  </span>
-  ), Founder of{" "}
-  <span className="font-semibold text-[#1cd8d2]">
-    NS Indian Cyber Army's
-  </span>
-  , and best{" "}
-  <span className="font-semibold text-white">
-    Web Developer
-  </span>{" "}
-  in{" "}
-  <span className="font-semibold text-[#1cd8d2]">
-    Gujarat
-  </span>
-  . Currently studying at{" "}
-  <span className="font-semibold text-white">
-    Gujarat Technological University (GTU)
-  </span>{" "}
-  affiliated with{" "}
-  <span className="font-semibold text-[#1cd8d2]">
-    SVIT Vasad
-  </span>
-  . Passionate about{" "}
-  <span className="font-semibold text-white">
-    ethical hacking
-  </span>
-  , building{" "}
-  <span className="font-semibold text-[#1cd8d2]">
-    secure systems
-  </span>
-  , and solving{" "}
-  <span className="font-semibold text-white">
-    real-world security challenges
-  </span>
-  .
-</motion.p>
+              className="mt-6 text-base sm:text-lg md:text-xl text-gray-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.4 }}
+            >
+              <span className="font-semibold text-white">
+                Cybersecurity Engineer
+              </span>{" "}
+              (
+              <span className="font-semibold text-[#1cd8d2]">
+                NScyber1417
+              </span>
+              ), Founder of{" "}
+              <span className="font-semibold text-[#1cd8d2]">
+                NS Indian Cyber Army
+              </span>
+              , and{" "}
+              <span className="font-semibold text-white">
+                Full Stack Web Developer
+              </span>{" "}
+              focused on{" "}
+              <span className="font-semibold text-[#1cd8d2]">
+                secure web development
+              </span>{" "}
+              and{" "}
+              <span className="font-semibold text-white">
+                real-world cybersecurity
+              </span>
+              . Currently studying at{" "}
+              <span className="font-semibold text-white">
+                Gujarat Technological University (GTU)
+              </span>{" "}
+              affiliated with{" "}
+              <span className="font-semibold text-[#1cd8d2]">
+                SVIT Vasad
+              </span>
+              .
+            </motion.p>
 
-            {/* BUTTONS */}
             <motion.div
               className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-6"
               initial={{ opacity: 0 }}
@@ -269,9 +267,9 @@ export default function Home() {
                 View My Work
               </a>
 
-              <a
-                href="./NScyber1417-cybersecurity Engineer.pdf"
-                download
+              <button
+                type="button"
+                onClick={downloadResume}
                 className="
                   px-6 py-3 rounded-full
                   text-lg font-medium
@@ -282,10 +280,9 @@ export default function Home() {
                 "
               >
                 My Resume
-              </a>
+              </button>
             </motion.div>
 
-            {/* SOCIAL ICONS */}
             <motion.div
               className="mt-10 flex gap-5 text-2xl md:text-3xl justify-center lg:justify-start"
               initial={{ opacity: 0, y: 20 }}
@@ -312,9 +309,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* RIGHT SIDE IMAGE */}
         <div className="hidden lg:flex items-center justify-center relative">
-
           <motion.div
             initial={{ opacity: 0, scale: 0.8, x: 100 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
@@ -322,20 +317,19 @@ export default function Home() {
             whileHover={{ scale: 1.05 }}
             className="relative"
           >
+            <div
+              className="
+                absolute inset-0
+                rounded-full
+                bg-linear-to-r
+                from-cyan-400/30
+                via-emerald-400/20
+                to-blue-500/30
+                blur-3xl
+                scale-110
+              "
+            />
 
-            {/* IMAGE GLOW */}
-            <div className="
-              absolute inset-0
-              rounded-full
-              bg-linear-to-r
-              from-cyan-400/30
-              via-emerald-400/20
-              to-blue-500/30
-              blur-3xl
-              scale-110
-            "></div>
-
-            {/* AVATAR */}
             <img
               src={avator}
               alt="Naitik Soni"
@@ -348,10 +342,8 @@ export default function Home() {
                 drop-shadow-[0_0_40px_rgba(0,255,200,0.35)]
               "
             />
-
           </motion.div>
         </div>
-
       </div>
     </section>
   );

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://naitiksoni1417.netlify.app/sitemap.xml
