@@ -1,8 +1,12 @@
+import "leaflet/dist/leaflet.css";
+import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip as LeafletTooltip } from "react-leaflet";
+
 import React, { useEffect, useMemo, useState } from "react";
 import emailjs from "@emailjs/browser";
 import {
   FiActivity, FiBarChart2, FiClock, FiDownload, FiEye, FiExternalLink, FiGrid,
-  FiGlobe, FiInbox, FiLogOut, FiMail, FiMenu, FiRefreshCw,
+  FiGlobe,
+  FiMapPin, FiInbox, FiLogOut, FiMail, FiMenu, FiRefreshCw,
   FiSearch, FiShield, FiSmartphone, FiTrash2, FiTrendingUp,
   FiUsers, FiX, FiCheckCircle, FiCircle
 } from "react-icons/fi";
@@ -392,6 +396,7 @@ If you did NOT make this change, immediately review your admin security logs and
     ["Digital Twin Lab", <FiActivity />],
     ["Devices", <FiSmartphone />],
     ["Earth View", <FiGlobe />],
+    ["India Map", <FiMapPin />],
     ["NS.ai", <FiActivity />],
     ["Settings", <FiShield />],
   ];
@@ -849,7 +854,7 @@ If you did NOT make this change, immediately review your admin security logs and
           <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.06)_1px,transparent_1px)] [background-size:42px_42px]" />
 
           <div className="relative mx-auto w-[92%] max-w-2xl rounded-[2.5rem] border border-cyan-300/20 bg-white/10 p-8 text-center shadow-[0_0_120px_rgba(34,211,238,.22)] backdrop-blur-2xl">
-            <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-[2rem] bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 text-5xl shadow-[0_0_70px_rgba(34,211,238,.55)] animate-pulse">
+            <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-[2rem] bg-gradient-to-br from-cyan-400 via-cyan-500 to-violet-600 text-5xl shadow-[0_0_70px_rgba(34,211,238,.55)] animate-pulse">
               ✦
             </div>
 
@@ -1550,7 +1555,7 @@ If you did NOT make this change, immediately review your admin security logs and
               ))}
             </section>
 
-            <div className="grid gap-6 xl:grid-cols-3">
+            <div className="space-y-6">
               <Card className="xl:col-span-2" title="Auto Block Firewall" desc="Top request IPs with real-time block controls" icon={<FiShield />}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
@@ -1717,7 +1722,7 @@ If you did NOT make this change, immediately review your admin security logs and
               </div>
             )}
 
-            <div className="grid gap-6 xl:grid-cols-3">
+            <div className="space-y-6">
               <Card title="Admin Profile" desc="Owner identity and admin information" icon={<FiShield />}>
                 <div className="grid gap-4">
                   <input
@@ -1773,7 +1778,7 @@ If you did NOT make this change, immediately review your admin security logs and
               </Card>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-3">
+            <div className="space-y-6">
               <Card title="NS.ai Settings" desc="AI language, tone and voice" icon={<FiActivity />}>
                 <div className="grid gap-4">
                   <select value={adminSettings?.nsaiSettings?.language || "Hinglish"} onChange={(e) => setAdminSettings({ ...adminSettings, nsaiSettings: { ...(adminSettings?.nsaiSettings || {}), language: e.target.value } })} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 font-black">
@@ -1946,7 +1951,7 @@ If you did NOT make this change, immediately review your admin security logs and
               ))}
             </section>
 
-            <div className="grid gap-6 xl:grid-cols-3">
+            <div className="space-y-6">
               <Card className="xl:col-span-2" title="Recent Resume Downloaders" desc="Click any IP to open SaaS intelligence popup" icon={<FiActivity />}>
                 <div className="mb-4 flex justify-end">
                   <button
@@ -2064,6 +2069,23 @@ If you did NOT make this change, immediately review your admin security logs and
             <Card title="Operating Systems" desc="OS usage breakdown" icon={<FiGrid />}>
               <Ranking data={osStats} />
             </Card>
+          </section>
+        )}
+
+
+        {active === "India Map" && (
+          <section className="mt-6 space-y-6">
+            <div className="rounded-[2.5rem] border border-emerald-200 bg-slate-950 p-8 text-white shadow-2xl">
+              <p className="text-xs font-black tracking-[0.35em] text-cyan-300">
+                INDIA TRAFFIC INTELLIGENCE
+              </p>
+              <h2 className="mt-3 text-4xl font-black">Live India Map</h2>
+              <p className="mt-2 max-w-3xl text-sm font-bold text-slate-400">
+                Real-time India visitor map with zoom, city/state labels, IP intelligence and location markers.
+              </p>
+            </div>
+
+            <IndiaMapPanel visitors={data?.recentVisitors || []} setActive={setActive} />
           </section>
         )}
 
@@ -2740,7 +2762,7 @@ function NSAIChat({
               </p>
 
               <div className="mx-auto mt-8 flex h-56 w-56 items-center justify-center rounded-full border border-cyan-300/30 bg-black/30 shadow-[0_0_80px_rgba(34,211,238,0.35)]">
-                <div className={`h-36 w-36 rounded-full bg-gradient-to-br from-cyan-300 via-blue-500 to-violet-600 shadow-[0_0_70px_rgba(34,211,238,0.65)] ${
+                <div className={`h-36 w-36 rounded-full bg-gradient-to-br from-cyan-300 via-cyan-500 to-violet-600 shadow-[0_0_70px_rgba(34,211,238,0.65)] ${
                   listening ? "animate-ping" : "animate-pulse"
                 }`} />
                 <div className="absolute text-5xl">✦</div>
@@ -2889,7 +2911,7 @@ function SecurityLogs({ analytics, reloadSecurity }) {
                     <button
                       type="button"
                       onClick={() => openIpPopup(log.ip)}
-                      className="rounded-xl bg-slate-950 px-3 py-2 font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-600"
+                      className="rounded-xl bg-slate-950 px-3 py-2 font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-500"
                     >
                       {log.ip}
                     </button>
@@ -2931,7 +2953,7 @@ function SecurityLogs({ analytics, reloadSecurity }) {
                 <h2 className="mt-3 text-4xl font-black tracking-tight text-white">IP Threat Command Center</h2>
                 <p className="mt-3 flex items-center gap-2 text-lg font-bold text-slate-300">
                   {selectedIp.ip}
-                  <span className="rounded-lg bg-blue-500/20 px-2 py-1 text-xs text-blue-200">COPY</span>
+                  <span className="rounded-lg bg-cyan-500/20 px-2 py-1 text-xs text-blue-200">COPY</span>
                 </p>
               </div>
 
@@ -3089,7 +3111,7 @@ function Sidebar({ menu, active, setActive, sidebarOpen, setSidebarOpen , unread
             <span>{name}</span>
 
             {name === "Messages" && Number(unreadMessages) > 0 && (
-              <span className="ml-auto flex h-6 min-w-6 items-center justify-center rounded-full bg-blue-600 px-2 text-xs font-black text-white shadow-lg">
+              <span className="ml-auto flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-2 text-xs font-black text-white shadow-lg">
                 {Number(unreadMessages) > 99 ? "99+" : unreadMessages}
               </span>
             )}
@@ -3290,7 +3312,7 @@ function VisitorsTable({ visitors, query, setQuery, exportVisitorsCSV, setSelect
                   <button
                     type="button"
                     onClick={() => setSelectedVisitor(v)}
-                    className="font-black text-slate-950 hover:text-blue-600 hover:underline"
+                    className="font-black text-slate-950 hover:text-cyan-600 hover:underline"
                   >
                     {v.ip}
                   </button>
@@ -3568,6 +3590,162 @@ function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMess
         </div>
       )}
     </section>
+  );
+}
+
+
+function IndiaMapPanel({ visitors = [], setActive }) {
+  const indiaVisitors = visitors.filter((v) => {
+    const country = String(v.country || "").toLowerCase();
+    return country.includes("india") && v.lat && v.lng;
+  });
+
+  const topCities = Object.values(
+    indiaVisitors.reduce((acc, v) => {
+      const key = v.city || "Unknown";
+      acc[key] = acc[key] || { city: key, count: 0, state: v.region || "Unknown" };
+      acc[key].count += 1;
+      return acc;
+    }, {})
+  ).sort((a, b) => b.count - a.count).slice(0, 8);
+
+  return (
+    <div className="space-y-6">
+      <div className="w-full overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-2">
+          <div>
+            <h3 className="text-2xl font-black text-slate-950">India Live Traffic Map</h3>
+            <p className="text-sm font-bold text-slate-500">Zoom, drag and click markers for full visitor intelligence.</p>
+          </div>
+          <span className="rounded-full bg-emerald-100 px-4 py-2 text-xs font-black text-emerald-700">
+            {indiaVisitors.length} India Visitors
+          </span>
+        </div>
+
+        <div className="relative h-[760px] overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-slate-950 shadow-[0_0_80px_rgba(34,211,238,.12)]">
+          <div className="pointer-events-none absolute left-5 top-5 z-[500] rounded-3xl border border-white/10 bg-slate-950/75 p-5 text-white backdrop-blur-xl">
+            <p className="text-xs font-black tracking-[0.25em] text-cyan-300">LIVE INDIA INTEL</p>
+            <h3 className="mt-2 text-2xl font-black">{indiaVisitors.length} Visitors</h3>
+            <p className="mt-1 text-xs font-bold text-slate-400">Zoom • Drag • Click IP markers</p>
+          </div>
+          <MapContainer
+            center={[22.9734, 78.6569]}
+            zoom={5.3}
+            minZoom={3}
+            maxZoom={18}
+            scrollWheelZoom={true}
+            className="h-full w-full"
+          >
+            <TileLayer
+              attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            />
+
+            {indiaVisitors.map((v, i) => (
+              <CircleMarker
+                key={`${v.ip}-${i}`}
+                center={[Number(v.lat), Number(v.lng)]}
+                radius={14}
+                pathOptions={{
+                  color: v.suspicious ? "#ef4444" : "#10b981",
+                  fillColor: v.suspicious ? "#ef4444" : "#10b981",
+                  fillOpacity: 0.95,
+                  weight: 5,
+                }}
+              >
+                <LeafletTooltip>
+                  {v.city || "Unknown"}, {v.region || "India"}
+                </LeafletTooltip>
+
+                <Popup>
+                  <div style={{ minWidth: "210px", fontSize: "12px", lineHeight: "1.6", fontFamily: "Arial, sans-serif" }}>
+                    <b>IP:</b> {v.ip || "Unknown"}<br />
+                    <b>City:</b> {v.city || "Unknown"}<br />
+                    <b>State:</b> {v.region || "Unknown"}<br />
+                    <b>Country:</b> {v.country || "India"}<br />
+                    <b>ISP:</b> {v.isp || "Unknown"}<br />
+                    <b>Browser:</b> {v.browser || "Unknown"}<br />
+                    <b>OS:</b> {v.os || "Unknown"}<br />
+                    <b>Device:</b> {v.device || "Desktop"}<br />
+                    <b>Last Seen:</b> {v.createdAt ? new Date(v.createdAt).toLocaleString() : "Unknown"}<br />
+
+                    <div style={{ display: "grid", gap: "7px", marginTop: "8px" }}>
+                      <button
+                        onClick={() => setActive?.("SOC Panel")}
+                        style={{
+                          width: "100%",
+                          border: "0",
+                          borderRadius: "8px",
+                          padding: "7px",
+                          background: "#06b6d4",
+                          color: "#fff",
+                          fontWeight: "800",
+                          cursor: "pointer"
+                        }}
+                      >
+                        SOC Panel
+                      </button>
+
+                      <button
+                        onClick={() => window.open(`https://www.google.com/maps?q=${v.lat},${v.lng}`, "_blank")}
+                        style={{
+                          width: "100%",
+                          border: "0",
+                          borderRadius: "8px",
+                          padding: "7px",
+                          background: "#020617",
+                          color: "#fff",
+                          fontWeight: "800",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Open Google Map
+                      </button>
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            ))}
+          </MapContainer>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-2xl font-black text-slate-950">Top Indian Cities</h3>
+          <p className="mt-1 text-sm font-bold text-slate-500">City-wise visitor concentration</p>
+
+          <div className="mt-5 space-y-3">
+            {topCities.length === 0 && (
+              <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                No India visitor locations yet.
+              </p>
+            )}
+
+            {topCities.map((c, i) => (
+              <div key={c.city} className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
+                <div>
+                  <p className="font-black text-slate-950">{i + 1}. {c.city}</p>
+                  <p className="text-xs font-bold text-slate-500">{c.state}</p>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
+                  {c.count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[2.5rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-2xl font-black text-slate-950">Map Legend</h3>
+          <div className="mt-5 space-y-3 text-sm font-bold text-slate-600">
+            <p><span className="mr-2 inline-block h-3 w-3 rounded-full bg-emerald-500"></span>Safe Visitor</p>
+            <p><span className="mr-2 inline-block h-3 w-3 rounded-full bg-red-500"></span>Suspicious Visitor</p>
+            <p>Use mouse wheel / trackpad to zoom in-out.</p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
