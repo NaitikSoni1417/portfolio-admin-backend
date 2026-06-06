@@ -1916,6 +1916,8 @@ If you did NOT make this change, immediately review your admin security logs and
             exportMessagesCSV={exportMessagesCSV}
             updateMessageStatus={updateMessageStatus}
             deleteMessage={deleteMessage}
+            token={token}
+            loadDashboard={loadDashboard}
           />
         )}
 
@@ -3314,7 +3316,39 @@ function VisitorsTable({ visitors, query, setQuery, exportVisitorsCSV, setSelect
   );
 }
 
-function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMessage }) {
+function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMessage, token, loadDashboard }) {
+  const [replyOpen, setReplyOpen] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [replyLoading, setReplyLoading] = useState(false);
+
+  const sendReply = async () => {
+    if (!replyOpen || !replyText.trim()) return alert("Please write reply message");
+    setReplyLoading(true);
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/messages/${replyOpen._id}/reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reply: replyText }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Reply failed");
+
+      setReplyOpen(null);
+      setReplyText("");
+      await loadDashboard?.();
+      alert("Reply sent successfully ✅");
+    } catch (err) {
+      alert(err.message || "Reply failed");
+    } finally {
+      setReplyLoading(false);
+    }
+  };
+
   const startVoiceInput = () => {
     setVoiceOpen(true);
     setVoiceText("Listening... speak now");
@@ -3421,6 +3455,16 @@ function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMess
             </button>
 
             <button
+              onClick={() => {
+                setReplyOpen(m);
+                setReplyText(`Hi ${m.name || "there"},\n\nThank you for contacting me. `);
+              }}
+              className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white"
+            >
+              Reply
+            </button>
+
+            <button
               onClick={() => deleteMessage(m._id)}
               className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-black text-red-600"
             >
@@ -3429,6 +3473,47 @@ function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMess
           </div>
         </div>
       ))}
+      {replyOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md">
+          <div className="w-full max-w-2xl rounded-[2.5rem] border border-white/40 bg-white p-7 shadow-[0_35px_120px_rgba(15,23,42,.40)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black tracking-[0.35em] text-cyan-600">ADMIN MESSAGE REPLY</p>
+                <h2 className="mt-2 text-3xl font-black text-slate-950">Reply to {replyOpen.name}</h2>
+                <p className="mt-1 text-sm font-bold text-slate-500">{replyOpen.email}</p>
+              </div>
+
+              <button
+                onClick={() => setReplyOpen(null)}
+                className="rounded-2xl bg-slate-950 px-4 py-3 font-black text-white hover:bg-red-500"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-3xl bg-slate-50 p-5">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-400">Original Message</p>
+              <p className="mt-2 text-sm font-bold leading-relaxed text-slate-700">{replyOpen.message}</p>
+            </div>
+
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              rows={8}
+              className="mt-5 w-full rounded-3xl border border-slate-200 bg-white p-5 text-sm font-bold text-slate-800 outline-none focus:border-slate-950"
+              placeholder="Write your professional reply..."
+            />
+
+            <button
+              onClick={sendReply}
+              disabled={replyLoading}
+              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 px-6 py-4 font-black text-white shadow-lg disabled:opacity-60"
+            >
+              {replyLoading ? "Sending Reply..." : "Send Reply"}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
