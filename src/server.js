@@ -836,7 +836,7 @@ app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
       </div>
     `;
 
-    await fetch("https://api.resend.com/emails", {
+    const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -849,6 +849,16 @@ app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
         html,
       }),
     });
+
+    const emailData = await emailRes.json();
+
+    if (!emailRes.ok) {
+      console.error("Resend reply failed:", emailData);
+      return res.status(500).json({
+        error: "Reply email failed",
+        details: emailData?.message || emailData?.error || JSON.stringify(emailData),
+      });
+    }
 
     msg.status = "Replied";
     msg.reply = reply;
