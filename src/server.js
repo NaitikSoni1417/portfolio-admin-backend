@@ -810,6 +810,58 @@ app.patch("/api/admin/messages/:id/status", auth, async (req, res) => {
   }
 });
 
+
+app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
+  try {
+    const { reply } = req.body;
+    if (!reply || !reply.trim()) {
+      return res.status(400).json({ error: "Reply message is required" });
+    }
+
+    const msg = await Message.findById(req.params.id);
+    if (!msg) return res.status(404).json({ error: "Message not found" });
+
+    const html = `
+      <div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px">
+        <div style="max-width:650px;margin:auto;background:#ffffff;border-radius:24px;padding:28px;border:1px solid #e2e8f0">
+          <h2 style="margin:0;color:#020617">Reply from Naitik Soni</h2>
+          <p style="color:#64748b">Cybersecurity Engineer | Ethical Hacker</p>
+          <div style="margin-top:22px;padding:20px;border-radius:18px;background:#f1f5f9;color:#0f172a;line-height:1.7">
+            ${reply.replace(/\n/g, "<br/>")}
+          </div>
+          <p style="margin-top:24px;color:#64748b;font-size:13px">
+            Original message from ${msg.name || "visitor"} was received through Naitik Soni Portfolio.
+          </p>
+        </div>
+      </div>
+    `;
+
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Naitik Soni <onboarding@resend.dev>",
+        to: msg.email,
+        subject: "Reply from Naitik Soni",
+        html,
+      }),
+    });
+
+    msg.status = "Replied";
+    msg.reply = reply;
+    msg.repliedAt = new Date();
+    await msg.save();
+
+    res.json({ success: true, message: "Reply sent successfully" });
+  } catch (err) {
+    console.error("Reply email failed:", err);
+    res.status(500).json({ error: "Reply email failed", details: err.message });
+  }
+});
+
 app.delete("/api/admin/messages/:id", auth, async (req, res) => {
   try {
     await Message.findByIdAndDelete(req.params.id);
