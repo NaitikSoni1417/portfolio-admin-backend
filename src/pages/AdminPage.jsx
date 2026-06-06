@@ -3320,10 +3320,30 @@ function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMess
   const [replyOpen, setReplyOpen] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
+  const [replyToast, setReplyToast] = useState(null);
+  const [replyProgress, setReplyProgress] = useState(0);
 
   const sendReply = async () => {
-    if (!replyOpen || !replyText.trim()) return alert("Please write reply message");
+    if (!replyOpen || !replyText.trim()) {
+      setReplyToast({
+        type: "error",
+        title: "Reply message required",
+        text: "Please write a message before sending reply.",
+      });
+      return;
+    }
+
     setReplyLoading(true);
+    setReplyProgress(8);
+    setReplyToast({
+      type: "loading",
+      title: "Sending reply",
+      text: "NS.ai is securely delivering your reply email...",
+    });
+
+    const progressTimer = setInterval(() => {
+      setReplyProgress((p) => (p >= 92 ? p : p + 8));
+    }, 120);
 
     try {
       const res = await fetch(`${API_URL}/api/admin/messages/${replyOpen._id}/reply`, {
@@ -3336,63 +3356,36 @@ function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMess
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Reply failed");
+      if (!res.ok) throw new Error(data.error || data.details || "Reply failed");
+
+      clearInterval(progressTimer);
+      setReplyProgress(100);
+
+      setReplyToast({
+        type: "success",
+        title: "Reply sent successfully",
+        text: `Your reply was delivered to ${replyOpen.email}. Message status updated to Replied.`,
+      });
 
       setReplyOpen(null);
       setReplyText("");
       await loadDashboard?.();
-      alert("Reply sent successfully ✅");
+
+      setTimeout(() => {
+        setReplyToast(null);
+        setReplyProgress(0);
+      }, 1800);
     } catch (err) {
-      alert(err.message || "Reply failed");
+      clearInterval(progressTimer);
+      setReplyProgress(100);
+      setReplyToast({
+        type: "error",
+        title: "Reply failed",
+        text: err.message || "Email service failed. Check Render logs and RESEND_API_KEY.",
+      });
     } finally {
       setReplyLoading(false);
     }
-  };
-
-  const startVoiceInput = () => {
-    setVoiceOpen(true);
-    setVoiceText("Listening... speak now");
-
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setVoiceText("Voice input is not supported. Please use Chrome.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-IN";
-    recognition.interimResults = true;
-    recognition.continuous = false;
-
-    setListening(true);
-
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((r) => r[0]?.transcript || "")
-        .join(" ");
-
-      setVoiceText(transcript || "Listening...");
-
-      if (event.results[event.results.length - 1].isFinal && transcript) {
-        setInput(transcript);
-        setListening(false);
-        setVoiceText("NS.ai is thinking...");
-        askAI(transcript, true);
-      }
-    };
-
-    recognition.onerror = (event) => {
-      setListening(false);
-      setVoiceText("Mic error: " + (event.error || "permission required"));
-    };
-
-    recognition.onend = () => {
-      setListening(false);
-    };
-
-    recognition.start();
   };
 
   const stopVoiceAgent = () => {
@@ -3473,6 +3466,66 @@ function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMess
           </div>
         </div>
       ))}
+
+      {replyToast && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-md">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[2.5rem] border border-white/40 bg-white p-8 text-center shadow-[0_35px_120px_rgba(15,23,42,.45)]">
+            <div className={`absolute inset-x-0 top-0 h-1 ${
+              replyToast.type === "success"
+                ? "bg-gradient-to-r from-emerald-400 to-cyan-400"
+                : replyToast.type === "error"
+                ? "bg-gradient-to-r from-red-500 to-orange-400"
+                : "bg-gradient-to-r from-cyan-400 via-violet-500 to-emerald-400"
+            }`} />
+
+            <div className={`mx-auto flex h-24 w-24 items-center justify-center rounded-full text-5xl shadow-xl ${
+              replyToast.type === "success"
+                ? "bg-emerald-50 text-emerald-600"
+                : replyToast.type === "error"
+                ? "bg-red-50 text-red-600"
+                : "bg-cyan-50 text-cyan-600 animate-pulse"
+            }`}>
+              {replyToast.type === "success" ? "✅" : replyToast.type === "error" ? "⚠️" : "✉️"}
+            </div>
+
+            <p className="mt-6 text-xs font-black tracking-[0.35em] text-cyan-600">
+              ADMIN REPLY CENTER
+            </p>
+
+            <h2 className="mt-3 text-3xl font-black text-slate-950">
+              {replyToast.title}
+            </h2>
+
+            <p className="mx-auto mt-3 max-w-sm text-sm font-bold leading-relaxed text-slate-500">
+              {replyToast.text}
+            </p>
+
+            <div className="mt-6 h-3 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  replyToast.type === "error"
+                    ? "bg-red-500"
+                    : "bg-gradient-to-r from-cyan-400 to-emerald-500"
+                }`}
+                style={{ width: `${replyProgress}%` }}
+              />
+            </div>
+
+            {replyToast.type === "error" && (
+              <button
+                onClick={() => {
+                  setReplyToast(null);
+                  setReplyProgress(0);
+                }}
+                className="mt-6 w-full rounded-2xl bg-slate-950 px-5 py-4 font-black text-white"
+              >
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {replyOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-md">
           <div className="w-full max-w-2xl rounded-[2.5rem] border border-white/40 bg-white p-7 shadow-[0_35px_120px_rgba(15,23,42,.40)]">
@@ -3509,7 +3562,7 @@ function Messages({ messages, exportMessagesCSV, updateMessageStatus, deleteMess
               disabled={replyLoading}
               className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 px-6 py-4 font-black text-white shadow-lg disabled:opacity-60"
             >
-              {replyLoading ? "Sending Reply..." : "Send Reply"}
+              {replyLoading ? "Sending Secure Reply..." : "Send Reply"}
             </button>
           </div>
         </div>
