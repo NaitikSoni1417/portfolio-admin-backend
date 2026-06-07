@@ -438,48 +438,8 @@ app.post("/api/track", async (req, res) => {
     const rawIp = req.body.publicIp || req.body.ip || forwardedIp || req.clientIp || req.ip;
     const ip = cleanIp(rawIp);
 
-    let geo = {};
-    let geoProvider = "none";
-
-    try {
-      const geoRes = await fetch(`https://ipwho.is/${ip}`);
-      const geoJson = await geoRes.json();
-
-      if (geoJson && geoJson.success !== false && geoJson.country) {
-        geoProvider = "ipwho.is";
-        geo = {
-          city: geoJson.city,
-          region: geoJson.region,
-          country: geoJson.country,
-          isp: geoJson.connection?.isp,
-          lat: geoJson.latitude,
-          lng: geoJson.longitude
-        };
-      }
-    } catch (e) {
-      console.log("ipwho.is lookup failed:", e.message);
-    }
-
-    if (!geo.country) {
-      try {
-        const fallbackRes = await fetch(`https://ipapi.co/${ip}/json/`);
-        const fallbackJson = await fallbackRes.json();
-
-        if (fallbackJson && !fallbackJson.error && fallbackJson.country_name) {
-          geoProvider = "ipapi.co";
-          geo = {
-            city: fallbackJson.city,
-            region: fallbackJson.region,
-            country: fallbackJson.country_name,
-            isp: fallbackJson.org,
-            lat: fallbackJson.latitude,
-            lng: fallbackJson.longitude
-          };
-        }
-      } catch (e) {
-        console.log("ipapi.co lookup failed:", e.message);
-      }
-    }
+    let geo = await lookupIpGeo(ip);
+    let geoProvider = geo.country !== "Unknown" ? "lookupIpGeo" : "none";
 
     await Visitor.create({
       ip,
