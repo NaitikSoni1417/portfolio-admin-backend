@@ -707,7 +707,7 @@ app.post("/api/contact", async (req, res) => {
 
 app.post("/api/resume-download", async (req, res) => {
   try {
-    const userAgent = req.headers["user-agent"] || "";
+    const userAgent = req.body.userAgent || req.headers["user-agent"] || "";
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
     const ip = cleanIp(req.body.publicIp || forwardedIp || req.clientIp || req.ip);
     const geo = await getGeo(ip);
