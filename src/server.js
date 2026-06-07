@@ -1141,7 +1141,11 @@ app.get("/api/admin/digital-twins", auth, async (req, res) => {
         heat,
         recommendation,
       };
-    }).sort((a, b) => b.confidence - a.confidence).slice(0, 50);
+    }).sort((a, b) => {
+      const timeDiff = new Date(b.lastSeen) - new Date(a.lastSeen);
+      if (timeDiff !== 0) return timeDiff;
+      return b.confidence - a.confidence;
+    }).slice(0, 50);
 
     res.json({
       totalAnalysed: twins.length,
