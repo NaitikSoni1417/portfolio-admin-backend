@@ -439,11 +439,14 @@ app.post("/api/track", async (req, res) => {
     const ip = cleanIp(rawIp);
 
     let geo = {};
+    let geoProvider = "none";
+
     try {
       const geoRes = await fetch(`https://ipwho.is/${ip}`);
       const geoJson = await geoRes.json();
 
-      if (geoJson && geoJson.success !== false) {
+      if (geoJson && geoJson.success !== false && geoJson.country) {
+        geoProvider = "ipwho.is";
         geo = {
           city: geoJson.city,
           region: geoJson.region,
@@ -454,7 +457,28 @@ app.post("/api/track", async (req, res) => {
         };
       }
     } catch (e) {
-      console.log("Geo lookup failed:", e.message);
+      console.log("ipwho.is lookup failed:", e.message);
+    }
+
+    if (!geo.country) {
+      try {
+        const fallbackRes = await fetch(`https://ipapi.co/${ip}/json/`);
+        const fallbackJson = await fallbackRes.json();
+
+        if (fallbackJson && !fallbackJson.error && fallbackJson.country_name) {
+          geoProvider = "ipapi.co";
+          geo = {
+            city: fallbackJson.city,
+            region: fallbackJson.region,
+            country: fallbackJson.country_name,
+            isp: fallbackJson.org,
+            lat: fallbackJson.latitude,
+            lng: fallbackJson.longitude
+          };
+        }
+      } catch (e) {
+        console.log("ipapi.co lookup failed:", e.message);
+      }
     }
 
     await Visitor.create({
@@ -481,7 +505,7 @@ app.post("/api/track", async (req, res) => {
       createdAt: new Date()
     });
 
-    res.json({ success: true, ip, location: geo });
+    res.json({ success: true, ip, geoProvider, location: geo });
   } catch (err) {
     console.log("Tracking error:", err.message);
     res.status(500).json({ error: "Tracking failed" });
