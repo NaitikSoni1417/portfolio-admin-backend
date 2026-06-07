@@ -441,6 +441,18 @@ app.post("/api/track", async (req, res) => {
     let geo = await lookupIpGeo(ip);
     let geoProvider = geo.country !== "Unknown" ? "lookupIpGeo" : "none";
 
+    const uaString = req.body.userAgent || req.headers["user-agent"] || "";
+    const parser = new UAParser(uaString);
+    const uaResult = parser.getResult();
+
+    const browserName = uaResult.browser?.name || req.body.browser || "Unknown";
+    const browserVersion = uaResult.browser?.version ? ` ${uaResult.browser.version.split(".")[0]}` : "";
+    const osName = uaResult.os?.name || req.body.os || "Unknown";
+    const osVersion = uaResult.os?.version ? ` ${uaResult.os.version}` : "";
+    const deviceType = uaResult.device?.type
+      ? uaResult.device.type.charAt(0).toUpperCase() + uaResult.device.type.slice(1)
+      : (req.body.device || "Desktop");
+
     await Visitor.create({
       ip,
       visitorId: req.body.visitorId || ip,
@@ -458,10 +470,10 @@ app.post("/api/track", async (req, res) => {
       isp: req.body.isp || geo.isp || "Unknown",
       lat: req.body.lat || geo.lat || null,
       lng: req.body.lng || geo.lng || null,
-      browser: req.body.browser || "Unknown",
-      os: req.body.os || "Unknown",
-      device: req.body.device || "Desktop",
-      userAgent: req.headers["user-agent"] || "",
+      browser: `${browserName}${browserVersion}`,
+      os: `${osName}${osVersion}`,
+      device: deviceType,
+      userAgent: uaString,
       createdAt: new Date()
     });
 
