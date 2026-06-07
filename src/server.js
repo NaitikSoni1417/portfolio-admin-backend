@@ -1084,16 +1084,19 @@ app.get("/api/admin/digital-twins", auth, async (req, res) => {
       let learner = 0;
       let threat = 0;
 
-      if (pageText.includes("about")) recruiter += 15;
+      if (pageText.includes("about")) recruiter += 20;
       if (pageText.includes("skill")) recruiter += 20;
       if (pageText.includes("experience")) recruiter += 25;
-      if (pageText.includes("resume")) recruiter += 30;
-      if (pageText.includes("contact")) recruiter += 15;
+      if (pageText.includes("resume")) recruiter += 45;
+      if (pageText.includes("contact")) recruiter += 25;
+      if (uniquePages.length >= 3) recruiter += 15;
+      if (g.visits >= 3) recruiter += 10;
 
-      if (pageText.includes("project")) client += 30;
-      if (pageText.includes("service")) client += 25;
-      if (pageText.includes("contact")) client += 25;
-      if (g.visits >= 5) client += 15;
+      if (pageText.includes("project")) client += 40;
+      if (pageText.includes("service")) client += 30;
+      if (pageText.includes("contact")) client += 30;
+      if (uniquePages.length >= 3) client += 15;
+      if (g.visits >= 4) client += 15;
 
       if (pageText.includes("project")) learner += 20;
       if (pageText.includes("certificate")) learner += 20;
@@ -1115,8 +1118,8 @@ app.get("/api/admin/digital-twins", auth, async (req, res) => {
       let confidence = Math.max(recruiter, client, learner, threat, engagementScore);
 
       if (threat >= 55) intent = "Suspicious User";
-      else if (recruiter >= client && recruiter >= learner && recruiter >= 45) intent = "Recruiter";
-      else if (client >= recruiter && client >= learner && client >= 45) intent = "Potential Client";
+      else if (recruiter >= client && recruiter >= learner && recruiter >= 35) intent = "Recruiter";
+      else if (client >= recruiter && client >= learner && client >= 35) intent = "Potential Client";
       else if (learner >= 45) intent = "Cybersecurity Learner";
       else if (engagementScore >= 65) intent = "High Engagement Visitor";
 
@@ -1145,15 +1148,30 @@ app.get("/api/admin/digital-twins", auth, async (req, res) => {
       const timeDiff = new Date(b.lastSeen) - new Date(a.lastSeen);
       if (timeDiff !== 0) return timeDiff;
       return b.confidence - a.confidence;
-    }).slice(0, 50);
+    });
+
+    const allTwins = twins;
+    const visibleTwins = allTwins.slice(0, 50);
+    const total = allTwins.length || 1;
+    const hotLeads = allTwins.filter((x) => x.heat === "Hot").length;
+    const recruiters = allTwins.filter((x) => x.intent === "Recruiter").length;
+    const clients = allTwins.filter((x) => x.intent === "Potential Client").length;
+    const suspicious = allTwins.filter((x) => x.intent === "Suspicious User").length;
 
     res.json({
-      totalAnalysed: twins.length,
-      hotLeads: twins.filter((x) => x.heat === "Hot").length,
-      recruiters: twins.filter((x) => x.intent === "Recruiter").length,
-      clients: twins.filter((x) => x.intent === "Potential Client").length,
-      suspicious: twins.filter((x) => x.intent === "Suspicious User").length,
-      twins
+      totalAnalysed: allTwins.length,
+      showing: visibleTwins.length,
+      hotLeads,
+      recruiters,
+      clients,
+      suspicious,
+      percentages: {
+        hotLeads: Math.round((hotLeads / total) * 100),
+        recruiters: Math.round((recruiters / total) * 100),
+        clients: Math.round((clients / total) * 100),
+        suspicious: Math.round((suspicious / total) * 100)
+      },
+      twins: visibleTwins
     });
   } catch (err) {
     res.status(500).json({ error: "Digital Twin analysis failed" });
