@@ -30,6 +30,13 @@ const visitorSchema = new mongoose.Schema({
   ip: String,
   visitorId: String,
   page: String,
+  sessionId: String,
+  sessionDuration: { type: Number, default: 0 },
+  pagesViewed: [String],
+  screen: String,
+  language: String,
+  timezone: String,
+  referrer: String,
   browser: String,
   os: String,
   device: String,
@@ -69,6 +76,13 @@ const messageSchema = new mongoose.Schema({
   os: String,
   device: String,
   page: String,
+  sessionId: String,
+  sessionDuration: { type: Number, default: 0 },
+  pagesViewed: [String],
+  screen: String,
+  language: String,
+  timezone: String,
+  referrer: String,
   userAgent: String,
   status: { type: String, default: "Unread" },
   createdAt: { type: Date, default: Date.now }
@@ -80,6 +94,13 @@ const resumeDownloadSchema = new mongoose.Schema({
   ip: String,
   publicIp: String,
   page: String,
+  sessionId: String,
+  sessionDuration: { type: Number, default: 0 },
+  pagesViewed: [String],
+  screen: String,
+  language: String,
+  timezone: String,
+  referrer: String,
   city: String,
   region: String,
   country: String,
@@ -414,24 +435,45 @@ app.get("/api/security/check", async (req, res) => {
 app.post("/api/track", async (req, res) => {
   try {
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(req.body.ip || forwardedIp || req.clientIp || req.ip);
+    const rawIp = req.body.publicIp || req.body.ip || forwardedIp || req.clientIp || req.ip;
+    const ip = cleanIp(rawIp);
 
     let geo = {};
     try {
       const geoRes = await fetch(`https://ipwho.is/${ip}`);
-      geo = await geoRes.json();
-    } catch { }
+      const geoJson = await geoRes.json();
+
+      if (geoJson && geoJson.success !== false) {
+        geo = {
+          city: geoJson.city,
+          region: geoJson.region,
+          country: geoJson.country,
+          isp: geoJson.connection?.isp,
+          lat: geoJson.latitude,
+          lng: geoJson.longitude
+        };
+      }
+    } catch (e) {
+      console.log("Geo lookup failed:", e.message);
+    }
 
     await Visitor.create({
       ip,
-      visitorId: ip,
+      visitorId: req.body.visitorId || ip,
       page: req.body.page || "/",
+      sessionId: req.body.sessionId || "",
+      sessionDuration: req.body.sessionDuration || 0,
+      pagesViewed: req.body.pagesViewed || [],
+      screen: req.body.screen || "",
+      language: req.body.language || "",
+      timezone: req.body.timezone || "",
+      referrer: req.body.referrer || "",
       city: req.body.city || geo.city || "Unknown",
       region: req.body.region || geo.region || "Unknown",
       country: req.body.country || geo.country || "Unknown",
-      isp: req.body.isp || geo.connection?.isp || "Unknown",
-      lat: req.body.lat || geo.latitude || null,
-      lng: req.body.lng || geo.longitude || null,
+      isp: req.body.isp || geo.isp || "Unknown",
+      lat: req.body.lat || geo.lat || null,
+      lng: req.body.lng || geo.lng || null,
       browser: req.body.browser || "Unknown",
       os: req.body.os || "Unknown",
       device: req.body.device || "Desktop",
@@ -439,8 +481,9 @@ app.post("/api/track", async (req, res) => {
       createdAt: new Date()
     });
 
-    res.json({ success: true });
+    res.json({ success: true, ip, location: geo });
   } catch (err) {
+    console.log("Tracking error:", err.message);
     res.status(500).json({ error: "Tracking failed" });
   }
 });
