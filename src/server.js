@@ -172,6 +172,8 @@ const musicTrackSchema = new mongoose.Schema({
   size: Number,
   format: String,
   active: { type: Boolean, default: true },
+  featured: { type: Boolean, default: false },
+  sortOrder: { type: Number, default: 999 },
   createdAt: { type: Date, default: Date.now }
 });
 const MusicTrack = mongoose.model("MusicTrack", musicTrackSchema);
@@ -454,7 +456,7 @@ Naitik Soni profile:
 
 app.get("/api/music/tracks", async (req, res) => {
   try {
-    const tracks = await MusicTrack.find({ active: true }).sort({ createdAt: 1 }).lean();
+    const tracks = await MusicTrack.find({ active: true }).sort({ featured: -1, sortOrder: 1, createdAt: 1 }).lean();
 
     res.json({
       success: true,
@@ -472,7 +474,7 @@ app.get("/api/music/tracks", async (req, res) => {
 
 app.get("/api/admin/music/tracks", auth, async (req, res) => {
   try {
-    const tracks = await MusicTrack.find().sort({ createdAt: -1 }).lean();
+    const tracks = await MusicTrack.find().sort({ featured: -1, sortOrder: 1, createdAt: -1 }).lean();
     res.json({ success: true, total: tracks.length, tracks });
   } catch (err) {
     res.status(500).json({ error: "Admin music tracks load failed" });
@@ -492,13 +494,63 @@ app.post("/api/admin/music/upload", auth, upload.single("song"), async (req, res
       publicId: result.public_id,
       size: req.file.size,
       format: result.format,
-      active: true
+      active: true,
+      sortOrder: await MusicTrack.countDocuments() + 1
     });
 
     res.json({ success: true, track });
   } catch (err) {
     console.error("Music upload failed:", err.message);
     res.status(500).json({ error: "Music upload failed" });
+  }
+});
+
+app.patch("/api/admin/music/tracks/:id", auth, async (req, res) => {
+  try {
+    const allowed = {};
+    if (typeof req.body.title === "string") allowed.title = req.body.title.trim() || "Untitled Track";
+    if (typeof req.body.active === "boolean") allowed.active = req.body.active;
+    if (typeof req.body.featured === "boolean") allowed.featured = req.body.featured;
+    if (typeof req.body.sortOrder === "number") allowed.sortOrder = req.body.sortOrder;
+
+    const track = await MusicTrack.findByIdAndUpdate(
+      req.params.id,
+      { $set: allowed },
+      { new: true }
+    );
+
+    if (!track) return res.status(404).json({ error: "Track not found" });
+
+    if (allowed.featured === true) {
+      await MusicTrack.updateMany(
+        { _id: { $ne: track._id } },
+        { $set: { featured: false } }
+      );
+    }
+
+    res.json({ success: true, track });
+  } catch (err) {
+    res.status(500).json({ error: "Track update failed" });
+  }
+});
+
+app.post("/api/admin/music/reorder", auth, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+
+    await Promise.all(
+      items.map((item, index) =>
+        MusicTrack.updateOne(
+          { _id: item.id },
+          { $set: { sortOrder: Number(item.sortOrder ?? index + 1) } }
+        )
+      )
+    );
+
+    const tracks = await MusicTrack.find().sort({ featured: -1, sortOrder: 1, createdAt: -1 }).lean();
+    res.json({ success: true, tracks });
+  } catch (err) {
+    res.status(500).json({ error: "Track reorder failed" });
   }
 });
 
