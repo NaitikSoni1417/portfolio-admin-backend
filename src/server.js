@@ -6,8 +6,28 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import requestIp from "request-ip";
 import { UAParser } from "ua-parser-js";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+import streamifier from "streamifier";
 
 dotenv.config();
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("audio/")) {
+      return cb(new Error("Only audio files are allowed"));
+    }
+    cb(null, true);
+  }
+});
 
   process.env.GEMINI_API_KEY
 
@@ -144,6 +164,37 @@ const blockedIpSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 const BlockedIP = mongoose.model("BlockedIP", blockedIpSchema);
+
+const musicTrackSchema = new mongoose.Schema({
+  title: String,
+  url: String,
+  publicId: String,
+  size: Number,
+  format: String,
+  active: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now }
+});
+const MusicTrack = mongoose.model("MusicTrack", musicTrackSchema);
+
+function uploadAudioToCloudinary(fileBuffer, originalName) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "video",
+        folder: "portfolio-music",
+        public_id: originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_"),
+        overwrite: false
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    streamifier.createReadStream(fileBuffer).pipe(stream);
+  });
+}
+
 
 const loginAttempts = new Map();
 
@@ -400,6 +451,77 @@ Naitik Soni profile:
 - Focus: cybersecurity, ethical hacking, bug bounty, secure web apps, portfolio analytics
 - Communication style: friendly Indian Hinglish/Gujarati, like a real assistant, short and useful
 `;
+
+app.get("/api/music/tracks", async (req, res) => {
+  try {
+    const tracks = await MusicTrack.find({ active: true }).sort({ createdAt: 1 }).lean();
+
+    res.json({
+      success: true,
+      tracks: tracks.map((t) => ({
+        id: t._id,
+        title: t.title,
+        url: t.url,
+        createdAt: t.createdAt
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Music tracks load failed" });
+  }
+});
+
+app.get("/api/admin/music/tracks", auth, async (req, res) => {
+  try {
+    const tracks = await MusicTrack.find().sort({ createdAt: -1 }).lean();
+    res.json({ success: true, total: tracks.length, tracks });
+  } catch (err) {
+    res.status(500).json({ error: "Admin music tracks load failed" });
+  }
+});
+
+app.post("/api/admin/music/upload", auth, upload.single("song"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No audio file uploaded" });
+
+    const title = req.body.title || req.file.originalname.replace(/\.[^/.]+$/, "");
+    const result = await uploadAudioToCloudinary(req.file.buffer, req.file.originalname);
+
+    const track = await MusicTrack.create({
+      title,
+      url: result.secure_url,
+      publicId: result.public_id,
+      size: req.file.size,
+      format: result.format,
+      active: true
+    });
+
+    res.json({ success: true, track });
+  } catch (err) {
+    console.error("Music upload failed:", err.message);
+    res.status(500).json({ error: "Music upload failed" });
+  }
+});
+
+app.delete("/api/admin/music/tracks/:id", auth, async (req, res) => {
+  try {
+    const track = await MusicTrack.findById(req.params.id);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+
+    if (track.publicId) {
+      try {
+        await cloudinary.uploader.destroy(track.publicId, { resource_type: "video" });
+      } catch (e) {
+        console.log("Cloudinary delete warning:", e.message);
+      }
+    }
+
+    await MusicTrack.deleteOne({ _id: req.params.id });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Track delete failed" });
+  }
+});
+
 
 app.get("/", (req, res) => {
   res.send("Portfolio Admin Backend Running");
