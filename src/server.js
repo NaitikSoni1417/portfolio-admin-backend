@@ -178,6 +178,21 @@ const musicTrackSchema = new mongoose.Schema({
 });
 const MusicTrack = mongoose.model("MusicTrack", musicTrackSchema);
 
+const musicPlaySchema = new mongoose.Schema({
+  trackId: { type: mongoose.Schema.Types.ObjectId, ref: "MusicTrack" },
+  title: String,
+  ip: String,
+  city: String,
+  country: String,
+  browser: String,
+  os: String,
+  device: String,
+  page: String,
+  userAgent: String,
+  createdAt: { type: Date, default: Date.now }
+});
+const MusicPlay = mongoose.model("MusicPlay", musicPlaySchema);
+
 function uploadAudioToCloudinary(fileBuffer, originalName) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -454,6 +469,39 @@ Naitik Soni profile:
 - Communication style: friendly Indian Hinglish/Gujarati, like a real assistant, short and useful
 `;
 
+app.post("/api/music/play", async (req, res) => {
+  try {
+    const track = await MusicTrack.findById(req.body.trackId).lean();
+    if (!track) return res.status(404).json({ error: "Track not found" });
+
+    const userAgent = req.body.userAgent || req.headers["user-agent"] || "";
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const ip = cleanIp(req.body.publicIp || forwardedIp || req.clientIp || req.ip);
+    const geo = await getGeo(ip);
+
+    const parser = new UAParser(userAgent);
+    const ua = parser.getResult();
+
+    await MusicPlay.create({
+      trackId: track._id,
+      title: track.title,
+      ip,
+      city: geo.city,
+      country: geo.country,
+      browser: ua.browser?.name || "Unknown",
+      os: ua.os?.name || "Unknown",
+      device: ua.device?.type || "Desktop",
+      page: req.body.page || "/",
+      userAgent
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Music play tracking failed:", err.message);
+    res.status(500).json({ error: "Music play tracking failed" });
+  }
+});
+
 app.get("/api/music/tracks", async (req, res) => {
   try {
     const tracks = await MusicTrack.find({ active: true }).sort({ featured: -1, sortOrder: 1, createdAt: 1 }).lean();
@@ -462,6 +510,7 @@ app.get("/api/music/tracks", async (req, res) => {
       success: true,
       tracks: tracks.map((t) => ({
         id: t._id,
+        _id: t._id,
         title: t.title,
         url: t.url,
         createdAt: t.createdAt
@@ -469,6 +518,45 @@ app.get("/api/music/tracks", async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: "Music tracks load failed" });
+  }
+});
+
+app.get("/api/admin/music/analytics", auth, async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const totalTracks = await MusicTrack.countDocuments();
+    const activeTracks = await MusicTrack.countDocuments({ active: true });
+    const totalPlays = await MusicPlay.countDocuments();
+    const todayPlays = await MusicPlay.countDocuments({ createdAt: { $gte: today } });
+
+    const mostPlayed = await MusicPlay.aggregate([
+      { $group: { _id: "$trackId", title: { $last: "$title" }, plays: { $sum: 1 } } },
+      { $sort: { plays: -1 } },
+      { $limit: 1 }
+    ]);
+
+    const topTracks = await MusicPlay.aggregate([
+      { $group: { _id: "$trackId", title: { $last: "$title" }, plays: { $sum: 1 } } },
+      { $sort: { plays: -1 } },
+      { $limit: 8 }
+    ]);
+
+    const recentPlays = await MusicPlay.find().sort({ createdAt: -1 }).limit(10).lean();
+
+    res.json({
+      success: true,
+      totalTracks,
+      activeTracks,
+      totalPlays,
+      todayPlays,
+      mostPlayed: mostPlayed[0] || null,
+      topTracks,
+      recentPlays
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Music analytics failed" });
   }
 });
 
