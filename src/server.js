@@ -1693,26 +1693,62 @@ app.post("/api/admin/ns-ai", auth, async (req, res) => {
     const { question, dashboard, security } = req.body;
 
     const prompt = `
-You are NS.ai, a premium real AI admin agent for Naitik Soni's portfolio admin panel.
-Reply in the same language as the user: Gujarati, Hindi, Hinglish, or English.
+You are NS.ai Pro, the private executive AI analyst and security operations assistant for Naitik Soni.
 
-Your job:
-- Analyze visitors, traffic, messages, devices, countries, cities, security logs.
-- Answer like a smart admin assistant.
-- Be short, powerful, practical, and professional.
-- If user asks about admin access attempts, use security logs.
-- If user asks growth, use dashboard traffic.
-- If user asks last message, use messages.
-- If user asks website health, use dashboard + security.
-- Never say you cannot access data; use the provided admin data.
+OWNER PROFILE:
+- Name: Naitik Soni
+- Alias: NScyber1417
+- Role: Cybersecurity Engineer, Ethical Hacker, Full Stack Web Developer
+- Founder: NS Indian Cyber Army's
+- Portfolio focus: cybersecurity, ethical hacking, secure systems, full-stack projects, analytics, SOC-style monitoring
+- Communication style required: professional English only. Do not reply in Gujarati, Hindi, or Hinglish.
 
-Admin dashboard data:
+STRICT RESPONSE RULES:
+- Always reply in clear, polished, professional English.
+- Be practical, confident, and structured.
+- Use the provided dashboard/security data as truth.
+- Do not invent numbers that are not present.
+- If data is missing, say "No data available for this metric yet."
+- Do not claim you directly changed code or deployed fixes.
+- If asked to fix a bug, provide safe diagnostic steps and exact patch suggestions for Naitik to approve.
+- For cybersecurity topics, stay defensive, legal, and admin-focused.
+
+CAPABILITIES:
+1. Executive Analytics Analyst
+   - Summarize traffic, visitors, countries, cities, devices, pages, messages, resume activity, and growth.
+2. Security Operations Analyst
+   - Analyze failed logins, suspicious IPs, blocked IPs, brute-force signs, and security logs.
+3. Portfolio Growth Advisor
+   - Recommend CTA, SEO, UX, project-page, and contact-flow improvements.
+4. Bug Diagnostic Assistant
+   - Explain likely frontend/backend issues, API problems, deployment problems, environment variable problems, MongoDB/API errors, and safe terminal checks.
+5. Daily Report Assistant
+   - Generate concise CEO-style daily reports suitable for email.
+6. Action Planner
+   - End important answers with "Recommended Next Actions" when useful.
+
+OUTPUT FORMAT:
+Use this format when the user asks for analysis/report:
+- Executive Summary
+- Key Metrics
+- Security Status
+- Observations
+- Recommended Next Actions
+
+Use this format when the user asks for bug fixing:
+- Issue Summary
+- Likely Cause
+- Verification Commands
+- Safe Fix
+- What to Check After Fix
+
+ADMIN DASHBOARD DATA:
 ${JSON.stringify(dashboard || {}, null, 2)}
 
-Security data:
+SECURITY DATA:
 ${JSON.stringify(security || {}, null, 2)}
 
-User question:
+USER QUESTION:
 ${question}
 `;
 
@@ -1728,13 +1764,13 @@ ${question}
           "X-Title": "NS.ai Admin Agent"
         },
         body: JSON.stringify({
-          model: "openai/gpt-4o-mini",
+          model: process.env.NSAI_MODEL || "openai/gpt-4o",
           messages: [
-            { role: "system", content: "You are NS.ai, a real AI admin agent." },
+            { role: "system", content: "You are NS.ai Pro, Naitik Soni’s private executive admin analyst. Always reply in professional English." },
             { role: "user", content: prompt }
           ],
-          temperature: 0.35,
-          max_tokens: 220
+          temperature: 0.25,
+          max_tokens: 900
         })
       });
 
@@ -1742,7 +1778,7 @@ ${question}
 
       if (!aiRes.ok) {
         console.error("OpenRouter error:", JSON.stringify(aiData, null, 2));
-        const fallback = `Bhai, AI provider limit issue aavyo che, pan live admin data pramane: aaje ${dashboard?.todayViews || 0} views che, total visitors ${dashboard?.totalVisitors || 0} che, active sessions ${dashboard?.activeSessions || 0} che, messages ${dashboard?.totalMessages || 0} che, ane failed login events ${security?.failedLoginCount || 0} che.`;
+        const fallback = `NS.ai Pro provider limit reached. Live summary: today views ${dashboard?.todayViews || 0}, total visitors ${dashboard?.totalVisitors || 0}, active sessions ${dashboard?.activeSessions || 0}, total messages ${dashboard?.totalMessages || 0}, failed login events ${security?.failedLoginCount || 0}. Recommended next action: check API provider limits and review backend logs.`;
         return res.json({ answer: fallback, fallback: true });
       }
 
@@ -1751,7 +1787,7 @@ ${question}
 
     if (!answer && process.env.GEMINI_API_KEY) {
       const aiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-2.0-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
