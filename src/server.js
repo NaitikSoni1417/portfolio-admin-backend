@@ -1791,7 +1791,6 @@ ${question}
       } else {
         answer = aiData?.choices?.[0]?.message?.content || "";
       }
-      }
     }
 
     if (!answer && process.env.GEMINI_API_KEY) {
