@@ -1807,6 +1807,11 @@ ${question}
       );
 
       const aiData = await aiRes.json();
+
+      if (!aiRes.ok) {
+        console.error("Gemini error:", JSON.stringify(aiData, null, 2));
+      }
+
       answer = aiData?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\\n") || "";
     }
 
