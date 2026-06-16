@@ -30,6 +30,7 @@ const upload = multer({
 });
 
   process.env.GEMINI_API_KEY
+console.log("NSAI_ENV_CHECK", { gemini: !!process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || "default" });
 
 const app = express();
 app.set("trust proxy", true);
