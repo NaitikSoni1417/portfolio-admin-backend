@@ -1689,6 +1689,135 @@ app.get("/api/admin/advanced-analytics", auth, async (req, res) => {
 
 
 
+
+function nsaiLocalBrain(question = "", dashboard = {}, security = {}) {
+  const q = String(question).toLowerCase();
+
+  const metrics = {
+    totalVisitors: dashboard?.totalVisitors || 0,
+    todayViews: dashboard?.todayViews || 0,
+    activeSessions: dashboard?.activeSessions || 0,
+    totalMessages: dashboard?.totalMessages || 0,
+    failedLogins: security?.failedLoginCount || 0
+  };
+
+  if (/(who are you|what are you|your name|kon cho|kaun ho|about yourself)/i.test(q)) {
+    return `**I am NS.ai Pro.**
+
+I am a private Security Operations Intelligence Platform developed by **Naitik Soni (NScyber1417)**.
+
+My purpose is to assist with portfolio analytics, visitor intelligence, security monitoring, admin reporting, contact insights, and operational decision-making.
+
+**System Status**
+- Backend: Connected
+- Database: Connected
+- Analytics Engine: Active
+- Security Monitoring: Active
+- Local Intelligence Layer: Active
+
+I am designed as a private executive admin assistant for the Naitik Soni Portfolio ecosystem.`;
+  }
+
+  if (/(who developed|developer|created you|made you|banavyo|kisne banaya)/i.test(q)) {
+    return `**Developer Information**
+
+NS.ai Pro was developed by **Naitik Soni (NScyber1417)**.
+
+**Developer Profile**
+- Name: Naitik Soni
+- Alias: NScyber1417
+- Role: Cybersecurity Engineer, Ethical Hacker, Full Stack Web Developer
+- Founder: NS Indian Cyber Army's
+
+**Technology Stack**
+- Frontend: React + Vite
+- Backend: Node.js + Express
+- Database: MongoDB Atlas
+- Hosting: Render + Netlify
+- Intelligence Layer: Custom NS.ai Local Brain
+
+NS.ai Pro is built as a private admin intelligence system, not a normal chatbot.`;
+  }
+
+  if (/(what can you do|features|capabilities|help|su kari sake)/i.test(q)) {
+    return `**NS.ai Pro Capabilities**
+
+I can help with:
+
+- Visitor Intelligence Analysis
+- Portfolio Traffic Summary
+- Security Event Monitoring
+- Failed Login Review
+- Suspicious Activity Insights
+- Contact Message Overview
+- Executive Daily Reports
+- Growth Recommendations
+- Admin Dashboard Analysis
+- Portfolio Performance Insights
+
+I can also explain system status, backend health, visitor trends, and security posture in a professional executive format.`;
+  }
+
+  if (/(summary|report|today|admin|dashboard|traffic|visitor|visits)/i.test(q)) {
+    return `**Executive Summary**
+
+Today’s portfolio admin activity shows continued visitor engagement and active operational monitoring. The platform is receiving traffic, tracking sessions, monitoring messages, and maintaining visibility across security events.
+
+**Key Metrics**
+
+- **Total Visitors:** ${metrics.totalVisitors}
+- **Today’s Views:** ${metrics.todayViews}
+- **Active Sessions:** ${metrics.activeSessions}
+- **Total Messages:** ${metrics.totalMessages}
+- **Failed Login Events:** ${metrics.failedLogins}
+
+**Security Status**
+
+The system has recorded failed login activity. Continued monitoring is recommended to identify repeated attempts, suspicious IP behavior, and possible brute-force patterns.
+
+**Observations**
+
+- Visitor analytics are active.
+- Backend and database connectivity are working.
+- Admin intelligence reporting is operational.
+- Security monitoring is collecting useful signals.
+
+**Recommended Next Actions**
+
+1. Review suspicious IP activity.
+2. Monitor failed login patterns.
+3. Track visitor growth and top locations.
+4. Keep NS.ai Pro local intelligence enabled as a fallback layer.`;
+  }
+
+  if (/(security|failed login|attack|suspicious|blocked|risk)/i.test(q)) {
+    return `**Security Analysis**
+
+Current failed login events: **${metrics.failedLogins}**
+
+The admin system should continue monitoring repeated failed attempts, unusual IP activity, and suspicious access patterns.
+
+**Risk Level:** ${metrics.failedLogins > 50 ? "High Attention Required" : "Normal Monitoring"}
+
+**Recommended Security Actions**
+
+- Review failed login sources.
+- Check suspicious IPs.
+- Keep admin authentication strong.
+- Add OTP or 2FA if not already enabled.
+- Block repeated abusive IPs.`;
+  }
+
+  if (/(hi|hello|hey|kem cho|kaise ho)/i.test(q)) {
+    return `Hello Naitik. I am **NS.ai Pro**, your private portfolio admin intelligence assistant.  
+
+System is online and ready to analyze visitors, security, messages, and dashboard performance.`;
+  }
+
+  return "";
+}
+
+
 app.post("/api/admin/ns-ai", auth, async (req, res) => {
   try {
     const { question, dashboard, security } = req.body;
@@ -1762,7 +1891,7 @@ USER QUESTION:
 ${question}
 `;
 
-    let answer = "";
+    let answer = nsaiLocalBrain(question, dashboard, security) || "";
 
     if (false && !answer && process.env.OPENROUTER_API_KEY) {
       const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
