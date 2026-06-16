@@ -1787,11 +1787,10 @@ ${question}
 
       if (!aiRes.ok) {
         console.error("OpenRouter error:", JSON.stringify(aiData, null, 2));
-        const fallback = `NS.ai Pro provider limit reached. Live summary: today views ${dashboard?.todayViews || 0}, total visitors ${dashboard?.totalVisitors || 0}, active sessions ${dashboard?.activeSessions || 0}, total messages ${dashboard?.totalMessages || 0}, failed login events ${security?.failedLoginCount || 0}. Recommended next action: check API provider limits and review backend logs.`;
-        return res.json({ answer: fallback, fallback: true });
+        console.warn("OpenRouter failed. Trying Gemini fallback...");
+      } else {
+        answer = aiData?.choices?.[0]?.message?.content || "";
       }
-
-      answer = aiData?.choices?.[0]?.message?.content || "";
     }
 
     if (!answer && process.env.GEMINI_API_KEY) {
