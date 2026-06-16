@@ -1763,7 +1763,7 @@ ${question}
 
     let answer = "";
 
-    if (process.env.OPENROUTER_API_KEY) {
+    if (!answer && process.env.OPENROUTER_API_KEY) {
       const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
