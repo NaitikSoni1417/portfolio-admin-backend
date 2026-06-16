@@ -1779,7 +1779,7 @@ ${question}
             { role: "user", content: prompt }
           ],
           temperature: 0.25,
-          max_tokens: 550
+          max_tokens: 300
         })
       });
 
