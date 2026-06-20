@@ -30,7 +30,6 @@ const upload = multer({
 });
 
   process.env.GEMINI_API_KEY
-console.log("NSAI_ENV_CHECK", { gemini: !!process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || "default" });
 
 const app = express();
 app.set("trust proxy", true);
@@ -193,6 +192,58 @@ const musicPlaySchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 const MusicPlay = mongoose.model("MusicPlay", musicPlaySchema);
+
+const portfolioContentSchema = new mongoose.Schema({
+  heroTitle: { type: String, default: "Naitik Soni" },
+  heroSubtitle: { type: String, default: "Cybersecurity Engineer & Ethical Hacker" },
+  cpiText: { type: String, default: "Cybersecurity Engineer • Founder • Full Stack Developer" },
+  aboutText: { type: String, default: "I build secure, modern and high-performance digital products." },
+  resumeUrl: { type: String, default: "/Resume-Naitik-Soni.pdf" },
+  githubUrl: { type: String, default: "" },
+  linkedinUrl: { type: String, default: "" },
+  instagramUrl: { type: String, default: "" },
+  updatedAt: { type: Date, default: Date.now }
+});
+const PortfolioContent = mongoose.model("PortfolioContent", portfolioContentSchema);
+
+const portfolioProjectSchema = new mongoose.Schema({
+  title: String,
+  description: String,
+  techStack: [String],
+  category: { type: String, default: "Web App" },
+  imageUrl: String,
+  githubUrl: String,
+  liveUrl: String,
+  featured: { type: Boolean, default: false },
+  active: { type: Boolean, default: true },
+  order: { type: Number, default: 999 },
+  createdAt: { type: Date, default: Date.now }
+});
+const PortfolioProject = mongoose.model("PortfolioProject", portfolioProjectSchema);
+
+const portfolioCertificationSchema = new mongoose.Schema({
+  title: String,
+  issuer: String,
+  date: String,
+  certificateUrl: String,
+  imageUrl: String,
+  active: { type: Boolean, default: true },
+  order: { type: Number, default: 999 },
+  createdAt: { type: Date, default: Date.now }
+});
+const PortfolioCertification = mongoose.model("PortfolioCertification", portfolioCertificationSchema);
+
+const portfolioSkillSchema = new mongoose.Schema({
+  name: String,
+  category: { type: String, default: "Security" },
+  level: { type: String, default: "Advanced" },
+  icon: String,
+  active: { type: Boolean, default: true },
+  order: { type: Number, default: 999 },
+  createdAt: { type: Date, default: Date.now }
+});
+const PortfolioSkill = mongoose.model("PortfolioSkill", portfolioSkillSchema);
+
 
 function uploadAudioToCloudinary(fileBuffer, originalName) {
   return new Promise((resolve, reject) => {
@@ -1608,6 +1659,156 @@ app.get("/api/admin/security-logs", auth, async (req, res) => {
 });
 
 
+
+
+/* =========================
+   NS CONTROL HUB API
+========================= */
+
+async function getPortfolioContentDoc() {
+  let content = await PortfolioContent.findOne();
+  if (!content) content = await PortfolioContent.create({});
+  return content;
+}
+
+app.get("/api/ns-control/content", async (req, res) => {
+  try {
+    const content = await getPortfolioContentDoc();
+    res.json({ success: true, data: content });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.put("/api/ns-control/content", auth, async (req, res) => {
+  try {
+    const content = await getPortfolioContentDoc();
+    Object.assign(content, req.body, { updatedAt: new Date() });
+    await content.save();
+    res.json({ success: true, message: "NS Control Hub content updated", data: content });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get("/api/ns-control/projects", async (req, res) => {
+  try {
+    const data = await PortfolioProject.find().sort({ order: 1, createdAt: -1 });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post("/api/ns-control/projects", auth, async (req, res) => {
+  try {
+    const item = await PortfolioProject.create({
+      ...req.body,
+      techStack: Array.isArray(req.body.techStack)
+        ? req.body.techStack
+        : String(req.body.techStack || "").split(",").map(x => x.trim()).filter(Boolean)
+    });
+    res.status(201).json({ success: true, message: "Project saved", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.patch("/api/ns-control/projects/:id", auth, async (req, res) => {
+  try {
+    const update = { ...req.body };
+    if (update.techStack && !Array.isArray(update.techStack)) {
+      update.techStack = String(update.techStack).split(",").map(x => x.trim()).filter(Boolean);
+    }
+    const item = await PortfolioProject.findByIdAndUpdate(req.params.id, update, { new: true });
+    res.json({ success: true, message: "Project updated", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.delete("/api/ns-control/projects/:id", auth, async (req, res) => {
+  try {
+    await PortfolioProject.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Project deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get("/api/ns-control/certifications", async (req, res) => {
+  try {
+    const data = await PortfolioCertification.find().sort({ order: 1, createdAt: -1 });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post("/api/ns-control/certifications", auth, async (req, res) => {
+  try {
+    const item = await PortfolioCertification.create(req.body);
+    res.status(201).json({ success: true, message: "Certification saved", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.patch("/api/ns-control/certifications/:id", auth, async (req, res) => {
+  try {
+    const item = await PortfolioCertification.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json({ success: true, message: "Certification updated", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.delete("/api/ns-control/certifications/:id", auth, async (req, res) => {
+  try {
+    await PortfolioCertification.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Certification deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get("/api/ns-control/skills", async (req, res) => {
+  try {
+    const data = await PortfolioSkill.find().sort({ order: 1, createdAt: -1 });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.post("/api/ns-control/skills", auth, async (req, res) => {
+  try {
+    const item = await PortfolioSkill.create(req.body);
+    res.status(201).json({ success: true, message: "Skill saved", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.patch("/api/ns-control/skills/:id", auth, async (req, res) => {
+  try {
+    const item = await PortfolioSkill.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json({ success: true, message: "Skill updated", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.delete("/api/ns-control/skills/:id", auth, async (req, res) => {
+  try {
+    await PortfolioSkill.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Skill deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+
 app.get("/api/admin/advanced-analytics", auth, async (req, res) => {
   try {
     const logs = await SecurityLog.find().sort({ createdAt: -1 }).limit(100).lean();
@@ -1689,135 +1890,6 @@ app.get("/api/admin/advanced-analytics", auth, async (req, res) => {
 
 
 
-
-function nsaiLocalBrain(question = "", dashboard = {}, security = {}) {
-  const q = String(question).toLowerCase();
-
-  const metrics = {
-    totalVisitors: dashboard?.totalVisitors || 0,
-    todayViews: dashboard?.todayViews || 0,
-    activeSessions: dashboard?.activeSessions || 0,
-    totalMessages: dashboard?.totalMessages || 0,
-    failedLogins: security?.failedLoginCount || 0
-  };
-
-  if (/(who are you|what are you|your name|kon cho|kaun ho|about yourself)/i.test(q)) {
-    return `**I am NS.ai Pro.**
-
-I am a private Security Operations Intelligence Platform developed by **Naitik Soni (NScyber1417)**.
-
-My purpose is to assist with portfolio analytics, visitor intelligence, security monitoring, admin reporting, contact insights, and operational decision-making.
-
-**System Status**
-- Backend: Connected
-- Database: Connected
-- Analytics Engine: Active
-- Security Monitoring: Active
-- Local Intelligence Layer: Active
-
-I am designed as a private executive admin assistant for the Naitik Soni Portfolio ecosystem.`;
-  }
-
-  if (/(who developed|developer|created you|made you|banavyo|kisne banaya)/i.test(q)) {
-    return `**Developer Information**
-
-NS.ai Pro was developed by **Naitik Soni (NScyber1417)**.
-
-**Developer Profile**
-- Name: Naitik Soni
-- Alias: NScyber1417
-- Role: Cybersecurity Engineer, Ethical Hacker, Full Stack Web Developer
-- Founder: NS Indian Cyber Army's
-
-**Technology Stack**
-- Frontend: React + Vite
-- Backend: Node.js + Express
-- Database: MongoDB Atlas
-- Hosting: Render + Netlify
-- Intelligence Layer: Custom NS.ai Local Brain
-
-NS.ai Pro is built as a private admin intelligence system, not a normal chatbot.`;
-  }
-
-  if (/(what can you do|features|capabilities|help|su kari sake)/i.test(q)) {
-    return `**NS.ai Pro Capabilities**
-
-I can help with:
-
-- Visitor Intelligence Analysis
-- Portfolio Traffic Summary
-- Security Event Monitoring
-- Failed Login Review
-- Suspicious Activity Insights
-- Contact Message Overview
-- Executive Daily Reports
-- Growth Recommendations
-- Admin Dashboard Analysis
-- Portfolio Performance Insights
-
-I can also explain system status, backend health, visitor trends, and security posture in a professional executive format.`;
-  }
-
-  if (/(summary|report|today|admin|dashboard|traffic|visitor|visits)/i.test(q)) {
-    return `**Executive Summary**
-
-Today’s portfolio admin activity shows continued visitor engagement and active operational monitoring. The platform is receiving traffic, tracking sessions, monitoring messages, and maintaining visibility across security events.
-
-**Key Metrics**
-
-- **Total Visitors:** ${metrics.totalVisitors}
-- **Today’s Views:** ${metrics.todayViews}
-- **Active Sessions:** ${metrics.activeSessions}
-- **Total Messages:** ${metrics.totalMessages}
-- **Failed Login Events:** ${metrics.failedLogins}
-
-**Security Status**
-
-The system has recorded failed login activity. Continued monitoring is recommended to identify repeated attempts, suspicious IP behavior, and possible brute-force patterns.
-
-**Observations**
-
-- Visitor analytics are active.
-- Backend and database connectivity are working.
-- Admin intelligence reporting is operational.
-- Security monitoring is collecting useful signals.
-
-**Recommended Next Actions**
-
-1. Review suspicious IP activity.
-2. Monitor failed login patterns.
-3. Track visitor growth and top locations.
-4. Keep NS.ai Pro local intelligence enabled as a fallback layer.`;
-  }
-
-  if (/(security|failed login|attack|suspicious|blocked|risk)/i.test(q)) {
-    return `**Security Analysis**
-
-Current failed login events: **${metrics.failedLogins}**
-
-The admin system should continue monitoring repeated failed attempts, unusual IP activity, and suspicious access patterns.
-
-**Risk Level:** ${metrics.failedLogins > 50 ? "High Attention Required" : "Normal Monitoring"}
-
-**Recommended Security Actions**
-
-- Review failed login sources.
-- Check suspicious IPs.
-- Keep admin authentication strong.
-- Add OTP or 2FA if not already enabled.
-- Block repeated abusive IPs.`;
-  }
-
-  if (/(hi|hello|hey|kem cho|kaise ho)/i.test(q)) {
-    return `Hello Naitik. I am **NS.ai Pro**, your private portfolio admin intelligence assistant.  
-
-System is online and ready to analyze visitors, security, messages, and dashboard performance.`;
-  }
-
-  return "";
-}
-
-
 app.post("/api/admin/ns-ai", auth, async (req, res) => {
   try {
     const { question, dashboard, security } = req.body;
@@ -1891,9 +1963,9 @@ USER QUESTION:
 ${question}
 `;
 
-    let answer = nsaiLocalBrain(question, dashboard, security) || "";
+    let answer = "";
 
-    if (false && !answer && process.env.OPENROUTER_API_KEY) {
+    if (process.env.OPENROUTER_API_KEY) {
       const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -1909,7 +1981,7 @@ ${question}
             { role: "user", content: prompt }
           ],
           temperature: 0.25,
-          max_tokens: 300
+          max_tokens: 550
         })
       });
 
@@ -1917,10 +1989,11 @@ ${question}
 
       if (!aiRes.ok) {
         console.error("OpenRouter error:", JSON.stringify(aiData, null, 2));
-        console.warn("OpenRouter failed. Trying Gemini fallback...");
-      } else {
-        answer = aiData?.choices?.[0]?.message?.content || "";
+        const fallback = `NS.ai Pro provider limit reached. Live summary: today views ${dashboard?.todayViews || 0}, total visitors ${dashboard?.totalVisitors || 0}, active sessions ${dashboard?.activeSessions || 0}, total messages ${dashboard?.totalMessages || 0}, failed login events ${security?.failedLoginCount || 0}. Recommended next action: check API provider limits and review backend logs.`;
+        return res.json({ answer: fallback, fallback: true });
       }
+
+      answer = aiData?.choices?.[0]?.message?.content || "";
     }
 
     if (!answer && process.env.GEMINI_API_KEY) {
@@ -1936,44 +2009,13 @@ ${question}
       );
 
       const aiData = await aiRes.json();
-
-      if (!aiRes.ok) {
-        console.error("Gemini error:", JSON.stringify(aiData, null, 2));
-      }
-
       answer = aiData?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\\n") || "";
     }
 
     if (!answer) {
-      answer = `**Executive Summary**
-
-Today’s portfolio admin activity shows continued visitor engagement and an active security posture. The platform is receiving traffic, tracking sessions, and maintaining visibility across messages, visitor analytics, and failed login events.
-
-**Key Metrics**
-
-- **Total Visitors:** ${dashboard?.totalVisitors || 0}
-- **Today’s Views:** ${dashboard?.todayViews || 0}
-- **Active Sessions:** ${dashboard?.activeSessions || 0}
-- **Total Messages:** ${dashboard?.totalMessages || 0}
-- **Failed Login Events:** ${security?.failedLoginCount || 0}
-
-**Security Status**
-
-The system has recorded failed login activity, so continued monitoring is recommended. Review suspicious IPs, blocked IPs, and repeated failed attempts to ensure the admin panel remains protected.
-
-**Observations**
-
-- Visitor tracking and dashboard analytics are functioning.
-- The backend service is live and connected to MongoDB.
-- AI provider quota is currently limited, so NS.ai Pro is using a secure local executive summary fallback.
-- The current admin data is still useful for decision-making even without external AI generation.
-
-**Recommended Next Actions**
-
-1. Review failed login activity and suspicious IP trends.
-2. Keep monitoring visitor growth, top locations, devices, and browser usage.
-3. Add paid credits to OpenRouter or enable Gemini billing for full AI-generated responses.
-4. Keep this fallback enabled so NS.ai Pro never shows a broken provider error again.`;
+      return res.status(500).json({
+        error: "No AI provider available. Add OPENROUTER_API_KEY or valid GEMINI_API_KEY."
+      });
     }
 
     res.json({ answer });
