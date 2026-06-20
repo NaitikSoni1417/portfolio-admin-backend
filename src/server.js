@@ -231,6 +231,8 @@ const portfolioCertificationSchema = new mongoose.Schema({
   date: String,
   certificateUrl: String,
   imageUrl: String,
+  analysisTitle: String,
+  analysisText: String,
   active: { type: Boolean, default: true },
   order: { type: Number, default: 999 },
   createdAt: { type: Date, default: Date.now }
