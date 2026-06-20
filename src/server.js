@@ -1766,16 +1766,11 @@ app.get("/api/ns-control/resume-download", async (req, res) => {
     const content = await getPortfolioContentDoc();
     if (!content.resumeUrl) return res.status(404).send("Resume not found");
 
-    const fileRes = await fetch(content.resumeUrl);
-    if (!fileRes.ok) return res.status(500).send("Resume fetch failed");
+    const downloadUrl = content.resumeUrl.includes("/raw/upload/")
+      ? content.resumeUrl.replace("/raw/upload/", "/raw/upload/fl_attachment:Naitik-Soni-Resume/")
+      : content.resumeUrl;
 
-    const buffer = Buffer.from(await fileRes.arrayBuffer());
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=Naitik-Soni-Resume.pdf");
-    res.setHeader("Content-Length", buffer.length);
-
-    return res.send(buffer);
+    return res.redirect(downloadUrl);
   } catch (error) {
     return res.status(500).send("Resume download failed");
   }
