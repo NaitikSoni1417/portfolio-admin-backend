@@ -1732,7 +1732,7 @@ function uploadResumeToCloudinary(fileBuffer, originalName) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        resource_type: "raw",
+        resource_type: "image",
         folder: "portfolio-resume",
         public_id: originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf",
         overwrite: true
