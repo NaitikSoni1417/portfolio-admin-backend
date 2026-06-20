@@ -1675,6 +1675,44 @@ async function getPortfolioContentDoc() {
   return content;
 }
 
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) return cb(new Error("Only image files are allowed"));
+    cb(null, true);
+  }
+});
+
+function uploadImageToCloudinary(fileBuffer, originalName) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "image",
+        folder: "portfolio-projects",
+        public_id: originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_"),
+        overwrite: false
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    streamifier.createReadStream(fileBuffer).pipe(stream);
+  });
+}
+
+app.post("/api/ns-control/upload-image", auth, imageUpload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No image uploaded" });
+    const result = await uploadImageToCloudinary(req.file.buffer, req.file.originalname);
+    res.json({ success: true, imageUrl: result.secure_url, publicId: result.public_id });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.get("/api/ns-control/content", async (req, res) => {
   try {
     const content = await getPortfolioContentDoc();
