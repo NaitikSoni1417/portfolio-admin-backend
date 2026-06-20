@@ -1765,12 +1765,7 @@ app.get("/api/ns-control/resume-download", async (req, res) => {
   try {
     const content = await getPortfolioContentDoc();
     if (!content.resumeUrl) return res.status(404).send("Resume not found");
-
-    const downloadUrl = content.resumeUrl.includes("/raw/upload/")
-      ? content.resumeUrl.replace("/raw/upload/", "/raw/upload/fl_attachment:Naitik-Soni-Resume/")
-      : content.resumeUrl;
-
-    return res.redirect(downloadUrl);
+    return res.redirect(content.resumeUrl);
   } catch (error) {
     return res.status(500).send("Resume download failed");
   }
