@@ -213,6 +213,9 @@ const PortfolioContent = mongoose.model("PortfolioContent", portfolioContentSche
 const portfolioProjectSchema = new mongoose.Schema({
   title: String,
   description: String,
+  status: { type: String, default: "LIVE" },
+  featured: { type: Boolean, default: false },
+  active: { type: Boolean, default: true },
   techStack: [String],
   category: { type: String, default: "Web App" },
   imageUrl: String,
