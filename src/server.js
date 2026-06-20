@@ -1719,6 +1719,15 @@ app.post("/api/ns-control/upload-image", auth, imageUpload.single("image"), asyn
 });
 
 
+const resumeFileSchema = new mongoose.Schema({
+  filename: String,
+  contentType: String,
+  data: Buffer,
+  size: Number,
+  createdAt: { type: Date, default: Date.now }
+});
+const ResumeFile = mongoose.model("ResumeFile", resumeFileSchema);
+
 const resumeUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 12 * 1024 * 1024 },
@@ -1750,25 +1759,40 @@ app.post("/api/ns-control/upload-resume", auth, resumeUpload.single("resume"), a
   try {
     if (!req.file) return res.status(400).json({ success: false, message: "No resume uploaded" });
 
-    const result = await uploadResumeToCloudinary(req.file.buffer, req.file.originalname);
+    await ResumeFile.deleteMany({});
+
+    await ResumeFile.create({
+      filename: "Naitik-Soni-Resume.pdf",
+      contentType: "application/pdf",
+      data: req.file.buffer,
+      size: req.file.size
+    });
 
     const content = await getPortfolioContentDoc();
-    content.resumeUrl = result.secure_url;
+    content.resumeUrl = "/api/ns-control/resume-download";
     content.updatedAt = new Date();
     await content.save();
 
-    res.json({ success: true, resumeUrl: result.secure_url, publicId: result.public_id });
+    res.json({
+      success: true,
+      message: "Resume uploaded successfully",
+      resumeUrl: "/api/ns-control/resume-download"
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-
 app.get("/api/ns-control/resume-download", async (req, res) => {
   try {
-    const content = await getPortfolioContentDoc();
-    if (!content.resumeUrl) return res.status(404).send("Resume not found");
-    return res.redirect(content.resumeUrl);
+    const file = await ResumeFile.findOne().sort({ createdAt: -1 });
+    if (!file) return res.status(404).send("Resume not found");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=Naitik-Soni-Resume.pdf");
+    res.setHeader("Content-Length", file.data.length);
+
+    return res.send(file.data);
   } catch (error) {
     return res.status(500).send("Resume download failed");
   }
