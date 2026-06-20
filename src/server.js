@@ -1713,6 +1713,51 @@ app.post("/api/ns-control/upload-image", auth, imageUpload.single("image"), asyn
   }
 });
 
+
+const resumeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== "application/pdf") return cb(new Error("Only PDF resume files are allowed"));
+    cb(null, true);
+  }
+});
+
+function uploadResumeToCloudinary(fileBuffer, originalName) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        folder: "portfolio-resume",
+        public_id: originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_"),
+        overwrite: true
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    streamifier.createReadStream(fileBuffer).pipe(stream);
+  });
+}
+
+app.post("/api/ns-control/upload-resume", auth, resumeUpload.single("resume"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: "No resume uploaded" });
+
+    const result = await uploadResumeToCloudinary(req.file.buffer, req.file.originalname);
+
+    const content = await getPortfolioContentDoc();
+    content.resumeUrl = result.secure_url;
+    content.updatedAt = new Date();
+    await content.save();
+
+    res.json({ success: true, resumeUrl: result.secure_url, publicId: result.public_id });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 app.get("/api/ns-control/content", async (req, res) => {
   try {
     const content = await getPortfolioContentDoc();
