@@ -1731,7 +1731,7 @@ function uploadResumeToCloudinary(fileBuffer, originalName) {
       {
         resource_type: "raw",
         folder: "portfolio-resume",
-        public_id: originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_"),
+        public_id: originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf",
         overwrite: true
       },
       (error, result) => {
