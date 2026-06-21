@@ -221,8 +221,6 @@ const portfolioProjectSchema = new mongoose.Schema({
   imageUrl: String,
   githubUrl: String,
   liveUrl: String,
-  featured: { type: Boolean, default: false },
-  active: { type: Boolean, default: true },
   order: { type: Number, default: 999 },
   createdAt: { type: Date, default: Date.now }
 });
@@ -289,11 +287,140 @@ function addSocEvent(event) {
   if (socEvents.length > 300) socEvents.pop();
 }
 
-function socMiddleware(req, res, next) {
+const SOC_ADMIN_EMAIL = process.env.SOC_ADMIN_EMAIL || "naitik.infosec@gmail.com";
+const SOC_CONTACT_EMAIL = "naitik.infosec@gmail.com";
+const SOC_BLOCK_MS = 60 * 60 * 1000;
+
+function isAdminProtectedIp(ip) {
+  const safeIps = (process.env.ADMIN_SAFE_IPS || "")
+    .split(",")
+    .map((x) => cleanIp(x.trim()))
+    .filter(Boolean);
+
+  return safeIps.includes(cleanIp(ip));
+}
+
+function getMailTransporter() {
+  if (!process.env.MAIL_USER || !process.env.MAIL_PASS) return null;
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.MAIL_USER,
+      pass: process.env.MAIL_PASS
+    }
+  });
+}
+
+function nsaiSecurityMailTemplate({ title, severity, ip, reason, path, info = {}, blockedUntil }) {
+  const rows = [
+    ["IP Address", ip],
+    ["Severity", severity],
+    ["Reason", reason],
+    ["Path", path || "Unknown"],
+    ["Location", `${info.city || "Unknown"}, ${info.region || "Unknown"}, ${info.country || "Unknown"}`],
+    ["ISP", info.isp || "Unknown"],
+    ["Device", info.device || "Unknown"],
+    ["OS", info.os || "Unknown"],
+    ["Browser", info.browser || "Unknown"],
+    ["User Agent", info.userAgent || "Unknown"],
+    ["Blocked Until", blockedUntil ? new Date(blockedUntil).toLocaleString("en-IN") : "Not blocked"]
+  ];
+
+  return `
+  <div style="margin:0;padding:0;background:#eef4ff;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+    <div style="max-width:760px;margin:0 auto;padding:28px">
+      <div style="background:linear-gradient(135deg,#020617,#0f172a,#083344);border-radius:28px;padding:28px;color:#fff;box-shadow:0 25px 90px rgba(15,23,42,.25)">
+        <p style="margin:0;color:#67e8f9;font-size:12px;font-weight:900;letter-spacing:5px">NS.ai SECURITY OPERATION CENTRE</p>
+        <h1 style="margin:14px 0 8px;font-size:30px;line-height:1.1">${title}</h1>
+        <p style="margin:0;color:#cbd5e1;font-size:15px;font-weight:700">Sent by - NS.ai Security Operation Centre</p>
+      </div>
+
+      <div style="margin-top:18px;background:rgba(255,255,255,.88);border:1px solid rgba(255,255,255,.9);border-radius:26px;padding:24px;box-shadow:0 20px 70px rgba(15,23,42,.12)">
+        <div style="display:inline-block;background:${severity === "CRITICAL" ? "#fee2e2" : "#fef3c7"};color:${severity === "CRITICAL" ? "#dc2626" : "#b45309"};padding:10px 14px;border-radius:999px;font-weight:900;font-size:12px;letter-spacing:1px">${severity}</div>
+        <h2 style="margin:18px 0 8px;font-size:22px">Suspicious activity detected</h2>
+        <p style="margin:0;color:#475569;font-weight:700;line-height:1.7">${reason}</p>
+
+        <table style="width:100%;margin-top:20px;border-collapse:separate;border-spacing:0 10px">
+          ${rows.map(([k,v]) => `
+          <tr>
+            <td style="width:160px;background:#f8fafc;padding:14px;border-radius:14px 0 0 14px;color:#64748b;font-size:12px;font-weight:900;text-transform:uppercase">${k}</td>
+            <td style="background:#f8fafc;padding:14px;border-radius:0 14px 14px 0;font-weight:800;word-break:break-word">${v || "Unknown"}</td>
+          </tr>`).join("")}
+        </table>
+
+        <div style="margin-top:18px;background:#020617;color:#fff;border-radius:20px;padding:18px">
+          <p style="margin:0;font-weight:900">Action Taken</p>
+          <p style="margin:8px 0 0;color:#cbd5e1;font-weight:700">The IP has been temporarily suspended by NS.ai SOC. Contact: ${SOC_CONTACT_EMAIL}</p>
+        </div>
+      </div>
+
+      <p style="text-align:center;margin-top:20px;color:#64748b;font-size:12px;font-weight:800">
+        Developed by Naitik Soni • Stay Ethical, Stay Legal, Stay Secure
+      </p>
+    </div>
+  </div>`;
+}
+
+async function sendNsaiSecurityAlert(payload) {
+  try {
+    const transporter = getMailTransporter();
+    if (!transporter) {
+      console.log("NS.ai SOC mail skipped: MAIL_USER / MAIL_PASS missing");
+      return;
+    }
+
+    await transporter.sendMail({
+      from: `"NS.ai Security Operation Centre" <${process.env.MAIL_USER}>`,
+      to: SOC_ADMIN_EMAIL,
+      subject: `🚨 ${payload.severity} NS.ai SOC Alert - ${payload.ip}`,
+      html: nsaiSecurityMailTemplate(payload)
+    });
+  } catch (e) {
+    console.log("NS.ai SOC mail failed:", e.message);
+  }
+}
+
+function suspendedResponse(res, ip, reason = "Suspicious activity detected") {
+  return res.status(403).send(`
+  <!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width,initial-scale=1" />
+      <title>403 - NS.ai SOC Suspended</title>
+      <style>
+        body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at top,#0f172a,#020617);font-family:Arial;color:#fff;padding:24px}
+        .card{max-width:720px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:32px;padding:34px;box-shadow:0 30px 120px rgba(0,0,0,.45);backdrop-filter:blur(22px)}
+        .tag{color:#67e8f9;font-weight:900;letter-spacing:5px;font-size:12px}
+        h1{font-size:42px;margin:14px 0 10px}
+        p{color:#cbd5e1;font-weight:700;line-height:1.7}
+        .ip{background:#020617;border-radius:16px;padding:14px;margin-top:18px;font-weight:900}
+        a{color:#67e8f9;font-weight:900}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="tag">NS.ai SECURITY OPERATION CENTRE</div>
+        <h1>403 • IP Temporarily Suspended</h1>
+        <p>Your IP address is suspended because NS.ai Security Operation Centre detected suspicious activity from your network.</p>
+        <div class="ip">IP: ${ip || "Unknown"}<br/>Reason: ${reason}</div>
+        <p>To recover your IP access, contact <a href="mailto:${SOC_CONTACT_EMAIL}">${SOC_CONTACT_EMAIL}</a>.</p>
+        <p style="font-size:12px;color:#94a3b8">Developed by Naitik Soni</p>
+      </div>
+    </body>
+  </html>`);
+}
+
+async function socMiddleware(req, res, next) {
   const ip = getClientIp(req, req.body?.publicIp || "");
   const now = Date.now();
   const windowMs = 30 * 1000;
-  const blockMs = 10 * 60 * 1000;
+  const blockMs = SOC_BLOCK_MS;
+
+  if (isAdminProtectedIp(ip)) {
+    return next();
+  }
 
   if (manualBlockedIps.has(ip)) {
     addSocEvent({ type: "MANUAL_BLOCKED", severity: "HIGH", ip, path: req.path, reason: "IP manually blocked by admin" });
@@ -315,9 +442,7 @@ function socMiddleware(req, res, next) {
       reason: "Blocked by NS.ai SOC firewall"
     });
 
-    return res.status(429).json({
-      error: "NS.ai SOC Firewall: Too many requests. IP temporarily blocked."
-    });
+    return suspendedResponse(res, ip, "Your IP is temporarily suspended by NS.ai SOC firewall.");
   }
 
   item.hits = item.hits.filter((t) => now - t < windowMs);
@@ -325,9 +450,9 @@ function socMiddleware(req, res, next) {
 
   const hits = item.hits.length;
 
-  const blockLimit = emergencyLockdown ? 35 : 80;
-  const highLimit = emergencyLockdown ? 20 : 45;
-  const mediumLimit = emergencyLockdown ? 12 : 25;
+  const blockLimit = emergencyLockdown ? 25 : 50;
+  const highLimit = emergencyLockdown ? 15 : 35;
+  const mediumLimit = emergencyLockdown ? 8 : 20;
 
   if (hits >= blockLimit) {
     item.blockedUntil = now + blockMs;
@@ -343,9 +468,42 @@ function socMiddleware(req, res, next) {
 
     socFirewall.set(ip, item);
 
-    return res.status(429).json({
-      error: "NS.ai SOC Firewall: Possible DoS traffic blocked."
+    const blockedUntil = new Date(item.blockedUntil);
+
+    await BlockedIP.findOneAndUpdate(
+      { ip },
+      {
+        ip,
+        reason: `${hits} requests in 30 seconds`,
+        expiresAt: blockedUntil,
+        blockedBy: "NS.ai SOC",
+        createdAt: new Date()
+      },
+      { upsert: true, new: true }
+    );
+
+    await SecurityLog.create({
+      ip,
+      action: "AUTO_BLOCKED_TRAFFIC",
+      reason: `${hits} requests in 30 seconds`,
+      attempts: hits,
+      blockedUntil,
+      userAgent: req.headers["user-agent"] || "",
+      ...(await getSecurityContext(req, ip, "AUTO_BLOCK"))
     });
+
+    sendNsaiSecurityAlert({
+      title: "Automatic Traffic Block Activated",
+      severity: "CRITICAL",
+      ip,
+      reason: `${hits} requests detected in 30 seconds. IP blocked for 1 hour.`,
+      path: req.path,
+      blockedUntil,
+      info: await getSecurityContext(req, ip, "AUTO_BLOCK")
+    });
+
+    return suspendedResponse(res, ip, `${hits} requests in 30 seconds`);
+    
   }
 
   if (hits >= highLimit) {
@@ -452,16 +610,13 @@ async function blockGuard(req, res, next) {
         return next();
       }
 
-      return res.status(403).json({
-        error: "Blocked by NS.ai SOC",
-        contact: "naitik.infosec@gmail.com"
-      });
+      return suspendedResponse(res, ip, blocked.reason || "Blocked by NS.ai SOC");
     }
   } catch {}
   next();
 }
 
-// app.use("/api", blockGuard);
+app.use("/api", blockGuard);
 
 function auth(req, res, next) {
   const token = req.headers.authorization?.replace("Bearer ", "");
@@ -916,6 +1071,29 @@ async function getSecurityContext(req, ip, key = "") {
 }
 
 
+
+app.get("/api/admin/test-soc-mail", async (req, res) => {
+  try {
+    const ip = getClientIp(req, req.query.publicIp || "");
+    const info = await getSecurityContext(req, ip, "TEST_SOC_MAIL");
+
+    await sendNsaiSecurityAlert({
+      title: "NS.ai SOC Test Alert",
+      severity: "HIGH",
+      ip,
+      reason: "This is a test alert to verify NS.ai Security Operation Centre email delivery.",
+      path: "/api/admin/test-soc-mail",
+      blockedUntil: null,
+      info
+    });
+
+    res.json({ success: true, message: "Test SOC email sent", to: SOC_ADMIN_EMAIL });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 app.post("/api/admin/login", async (req, res) => {
   try {
     const { key, publicIp } = req.body;
@@ -925,10 +1103,7 @@ app.post("/api/admin/login", async (req, res) => {
 
     if (isBlocked(ip)) {
       const item = loginAttempts.get(ip);
-      return res.status(429).json({
-        error: "Blocked",
-        blockedUntil: item.blockedUntil
-      });
+      return suspendedResponse(res, ip, "Admin access temporarily suspended due to repeated failed login attempts.");
     }
 
     const correctKey = await getAdminKey();
@@ -954,6 +1129,42 @@ app.post("/api/admin/login", async (req, res) => {
         userAgent: ua,
         ...sec
       });
+
+      if (blockedUntil && !isAdminProtectedIp(ip)) {
+        const blockedDate = new Date(blockedUntil);
+
+        await BlockedIP.findOneAndUpdate(
+          { ip },
+          {
+            ip,
+            reason: `Admin brute-force protection: ${count} failed login attempts`,
+            expiresAt: blockedDate,
+            blockedBy: "NS.ai SOC",
+            createdAt: new Date()
+          },
+          { upsert: true, new: true }
+        );
+
+        addSocEvent({
+          type: "ADMIN_BRUTE_FORCE",
+          severity: "CRITICAL",
+          ip,
+          path: "/api/admin/login",
+          reason: `${count} failed admin login attempts`
+        });
+
+        sendNsaiSecurityAlert({
+          title: "Admin Panel Brute Force Blocked",
+          severity: "CRITICAL",
+          ip,
+          reason: `${count} failed admin login attempts detected. IP blocked for 1 hour.`,
+          path: "/api/admin/login",
+          blockedUntil: blockedDate,
+          info: sec
+        });
+
+        return suspendedResponse(res, ip, "Admin brute-force attempt detected.");
+      }
 
       return res.status(blockedUntil ? 429 : 401).json({
         error: blockedUntil
@@ -1741,7 +1952,7 @@ function uploadResumeToCloudinary(fileBuffer, originalName) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        resource_type: "image",
+        resource_type: "raw",
         folder: "portfolio-resume",
         public_id: originalName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf",
         overwrite: true
