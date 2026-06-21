@@ -910,7 +910,12 @@ app.get("/api/security/check", async (req, res) => {
   }
 });
 
-app.post("/api/track", async (req, res) => {
+
+app.get("/api/test-suspended-page", (req, res) => {
+  return suspendedResponse(res, req.query.ip || "88.88.88.88", "Demo suspended page preview");
+});
+
+app.post("/api/track", socMiddleware, async (req, res) => {
   try {
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
     const rawIp = req.body.publicIp || req.body.ip || forwardedIp || req.clientIp || req.ip;
