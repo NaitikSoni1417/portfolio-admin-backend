@@ -373,7 +373,7 @@ async function sendNsaiSecurityAlert(payload) {
     await transporter.sendMail({
       from: `"NS.ai Security Operation Centre" <${process.env.MAIL_USER}>`,
       to: SOC_ADMIN_EMAIL,
-      subject: `🚨 ${payload.severity} NS.ai SOC Alert - ${payload.ip}`,
+      subject: `🚨 ${payload.severity} NS.ai SOC Alert - ${payload.ip} - ${new Date().toLocaleString("en-IN")}`,
       html: nsaiSecurityMailTemplate(payload)
     });
   } catch (e) {
