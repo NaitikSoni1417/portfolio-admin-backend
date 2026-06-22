@@ -1968,7 +1968,8 @@ app.post("/api/admin/soc/unblock", auth, async (req, res) => {
 
 app.post("/api/admin/ip/block", auth, async (req, res) => {
   try {
-    const { ip, duration = "permanent", reason = "Blocked by NS.ai SOC" } = req.body;
+    const { duration = "permanent", reason = "Blocked by NS.ai SOC" } = req.body;
+    const ip = cleanIp(req.body.ip);
     if (!ip) return res.status(400).json({ error: "IP required" });
 
     let expiresAt = null;
@@ -1993,6 +1994,16 @@ app.post("/api/admin/ip/block", auth, async (req, res) => {
       reason: `${ip} blocked for ${duration}`
     });
 
+    await sendNsaiSecurityAlert({
+      title: "Admin Manual IP Block Activated",
+      severity: duration === "permanent" ? "HIGH" : "MEDIUM",
+      ip,
+      reason: `Admin manually blocked this IP from NS.ai SOC Panel for ${duration}.`,
+      path: "/api/admin/ip/block",
+      blockedUntil: expiresAt,
+      info: await getSecurityContext(req, ip, "ADMIN_MANUAL_BLOCK")
+    });
+
     res.json({ success: true, blocked: item });
   } catch (err) {
     res.status(500).json({ error: "Block IP failed" });
@@ -2001,7 +2012,7 @@ app.post("/api/admin/ip/block", auth, async (req, res) => {
 
 app.post("/api/admin/ip/unblock", auth, async (req, res) => {
   try {
-    const { ip } = req.body;
+    const ip = cleanIp(req.body.ip);
     if (!ip) return res.status(400).json({ error: "IP required" });
 
     await BlockedIP.deleteOne({ ip });
