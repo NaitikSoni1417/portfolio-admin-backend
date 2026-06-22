@@ -382,34 +382,191 @@ async function sendNsaiSecurityAlert(payload) {
 }
 
 function suspendedResponse(res, ip, reason = "Suspicious activity detected") {
-  return res.status(403).send(`
-  <!doctype html>
-  <html>
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width,initial-scale=1" />
-      <title>403 - NS.ai SOC Suspended</title>
-      <style>
-        body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at top,#0f172a,#020617);font-family:Arial;color:#fff;padding:24px}
-        .card{max-width:720px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:32px;padding:34px;box-shadow:0 30px 120px rgba(0,0,0,.45);backdrop-filter:blur(22px)}
-        .tag{color:#67e8f9;font-weight:900;letter-spacing:5px;font-size:12px}
-        h1{font-size:42px;margin:14px 0 10px}
-        p{color:#cbd5e1;font-weight:700;line-height:1.7}
-        .ip{background:#020617;border-radius:16px;padding:14px;margin-top:18px;font-weight:900}
-        a{color:#67e8f9;font-weight:900}
-      </style>
-    </head>
-    <body>
-      <div class="card">
-        <div class="tag">NS.ai SECURITY OPERATION CENTRE</div>
-        <h1>403 • IP Temporarily Suspended</h1>
-        <p>Your IP address is suspended because NS.ai Security Operation Centre detected suspicious activity from your network.</p>
-        <div class="ip">IP: ${ip || "Unknown"}<br/>Reason: ${reason}</div>
-        <p>To recover your IP access, contact <a href="mailto:${SOC_CONTACT_EMAIL}">${SOC_CONTACT_EMAIL}</a>.</p>
-        <p style="font-size:12px;color:#94a3b8">Developed by Naitik Soni</p>
+  const safeIp = String(ip || "Unknown").replace(/[<>"']/g, "");
+  const safeReason = String(reason || "Suspicious activity detected").replace(/[<>"']/g, "");
+  const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+  return res.status(403).send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>403 • NS.ai SOC Access Denied</title>
+  <style>
+    *{box-sizing:border-box}
+    :root{--red:#ff2d2d;--red2:#ff5757;--dark:#020409;--panel:rgba(8,12,22,.78);--line:rgba(255,45,45,.34);--text:#f8fafc;--muted:#aeb7c8;--cyan:#67e8f9}
+    body{
+      margin:0;min-height:100vh;overflow-x:hidden;color:var(--text);
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+      background:
+        radial-gradient(circle at 50% 35%,rgba(255,0,0,.18),transparent 28%),
+        radial-gradient(circle at 85% 10%,rgba(255,45,45,.12),transparent 28%),
+        linear-gradient(135deg,#030712 0%,#060912 42%,#09030a 100%);
+    }
+    body:before{
+      content:"";position:fixed;inset:0;pointer-events:none;opacity:.34;
+      background-image:
+        linear-gradient(rgba(255,45,45,.055) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(255,45,45,.055) 1px,transparent 1px);
+      background-size:42px 42px;
+      mask-image:radial-gradient(circle at center,black,transparent 78%);
+    }
+    body:after{
+      content:"";position:fixed;inset:0;pointer-events:none;mix-blend-mode:screen;opacity:.14;
+      background:repeating-linear-gradient(0deg,rgba(255,255,255,.08) 0 1px,transparent 1px 4px);
+      animation:scan 7s linear infinite;
+    }
+    @keyframes scan{0%{transform:translateY(-40px)}100%{transform:translateY(40px)}}
+    @keyframes glitch{0%,100%{text-shadow:0 0 24px rgba(255,45,45,.9)}20%{text-shadow:8px 0 #ff0000,-8px 0 #00e5ff}22%{text-shadow:none}40%{transform:skewX(-2deg)}42%{transform:skewX(2deg)}}
+    @keyframes pulse{0%,100%{opacity:.65;filter:drop-shadow(0 0 18px rgba(255,45,45,.55))}50%{opacity:1;filter:drop-shadow(0 0 36px rgba(255,45,45,.95))}}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+    .wrap{position:relative;min-height:100vh;padding:28px;display:grid;grid-template-columns:330px 1fr 360px;gap:22px;align-items:stretch}
+    .border{
+      position:fixed;inset:14px;pointer-events:none;border:1px solid rgba(255,45,45,.35);
+      box-shadow:inset 0 0 70px rgba(255,0,0,.08),0 0 55px rgba(255,0,0,.10);
+      clip-path:polygon(18px 0,calc(100% - 18px) 0,100% 18px,100% calc(100% - 18px),calc(100% - 18px) 100%,18px 100%,0 calc(100% - 18px),0 18px);
+    }
+    .top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin-bottom:-4px}
+    .brand{font-weight:950;letter-spacing:.24em;color:var(--red);text-transform:uppercase}
+    .status{font-size:12px;font-weight:900;color:#22c55e;text-transform:uppercase;letter-spacing:.12em}
+    .dot{display:inline-block;width:13px;height:13px;background:#22c55e;border-radius:50%;margin-left:9px;box-shadow:0 0 24px #22c55e}
+    .panel{
+      position:relative;border:1px solid var(--line);background:linear-gradient(180deg,rgba(10,15,26,.82),rgba(2,6,14,.72));
+      border-radius:22px;padding:24px;box-shadow:0 30px 100px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter:blur(18px);overflow:hidden;
+    }
+    .panel:before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,transparent,rgba(255,45,45,.08),transparent);transform:translateX(-100%);animation:shine 4s linear infinite}
+    @keyframes shine{100%{transform:translateX(100%)}}
+    .left,.right{display:flex;flex-direction:column;gap:20px}
+    .shield{height:240px;display:flex;align-items:center;justify-content:center}
+    .shield svg{width:170px;height:170px;animation:pulse 2.1s infinite}
+    .label{font-size:13px;font-weight:950;letter-spacing:.18em;color:var(--red);text-transform:uppercase}
+    .critical{font-size:32px;font-weight:950;color:var(--red);letter-spacing:.08em;margin:12px 0}
+    .bars{display:flex;gap:6px;margin:14px 0}.bars span{height:11px;width:42px;background:var(--red);box-shadow:0 0 18px rgba(255,45,45,.7)}.bars span:nth-child(n+6){background:#111827;box-shadow:none;border:1px solid rgba(255,255,255,.08)}
+    .log{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:13px;color:#cbd5e1;font-family:"SFMono-Regular",Consolas,monospace;font-size:14px}
+    .log li:before{content:"> ";color:var(--red)}
+    .center{display:flex;align-items:center;justify-content:center;min-height:720px}
+    .main{width:100%;max-width:800px;text-align:center;padding:38px}
+    .soc-title{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:10px 24px;color:var(--red2);font-weight:950;letter-spacing:.18em;text-transform:uppercase;background:rgba(255,45,45,.05)}
+    .denied{margin:28px 0 0;font-size:36px;font-weight:950;color:var(--red2);letter-spacing:.12em;text-transform:uppercase}
+    .code{font-size:150px;line-height:.86;margin:18px 0 8px;font-weight:1000;color:var(--red);letter-spacing:.04em;animation:glitch 3.2s infinite;text-shadow:0 0 36px rgba(255,45,45,.88)}
+    .forbidden{font-size:40px;font-weight:950;color:var(--red2);letter-spacing:.22em;text-transform:uppercase}
+    .msg{max-width:620px;margin:22px auto;color:#d7dce7;font-size:18px;line-height:1.65;font-weight:700}
+    .data{margin:26px auto 0;text-align:left;border:1px solid var(--line);border-radius:18px;overflow:hidden;max-width:650px;background:rgba(0,0,0,.34)}
+    .row{display:grid;grid-template-columns:190px 1fr;border-bottom:1px solid rgba(255,45,45,.18)}
+    .row:last-child{border-bottom:0}.k{padding:15px 18px;color:#b9c0cf;font-family:Consolas,monospace;text-transform:uppercase}.v{padding:15px 18px;color:var(--red2);font-weight:950;font-family:Consolas,monospace;word-break:break-word}
+    .notice{margin:22px auto 0;max-width:650px;border:1px solid rgba(255,45,45,.24);border-radius:18px;padding:18px;color:#cbd5e1;background:rgba(255,255,255,.04);text-align:left;line-height:1.55}
+    .map{height:190px;position:relative;border-radius:18px;background:radial-gradient(circle at 68% 56%,rgba(255,45,45,.5),transparent 7%),linear-gradient(135deg,rgba(255,255,255,.05),rgba(255,255,255,.015));overflow:hidden}
+    .map:before{content:"WORLD THREAT MAP";position:absolute;top:16px;left:18px;color:var(--red);font-weight:950;font-size:12px;letter-spacing:.16em}
+    .map:after{content:"";position:absolute;inset:54px 22px 20px;background:
+      radial-gradient(circle at 17% 42%,rgba(255,255,255,.28) 0 2px,transparent 3px),
+      radial-gradient(circle at 31% 35%,rgba(255,255,255,.24) 0 2px,transparent 3px),
+      radial-gradient(circle at 54% 45%,rgba(255,255,255,.24) 0 2px,transparent 3px),
+      radial-gradient(circle at 70% 50%,rgba(255,45,45,.95) 0 5px,transparent 7px),
+      radial-gradient(circle at 82% 38%,rgba(255,255,255,.22) 0 2px,transparent 3px);
+      border:1px dashed rgba(255,255,255,.12);border-radius:16px;opacity:.9}
+    .sideRows{display:grid;gap:11px;margin-top:16px}.sideRow{display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,45,45,.15);padding-bottom:9px;color:#cbd5e1}.sideRow b{color:var(--red2)}
+    .help a{color:var(--red2);font-weight:950;text-decoration:none}
+    .footer{grid-column:1/-1;text-align:center;color:#9ca3af;font-weight:800}.footer b{color:var(--red2)}
+    @media (max-width:1100px){.wrap{grid-template-columns:1fr}.center{min-height:auto}.code{font-size:105px}.right,.left{grid-row:auto}.main{padding:26px}.row{grid-template-columns:1fr}.wrap{padding:18px}}
+  </style>
+</head>
+<body>
+  <div class="border"></div>
+  <main class="wrap">
+    <div class="top">
+      <div>
+        <div class="brand">NS.ai SOC</div>
+        <div style="color:#9ca3af;font-size:12px;font-weight:800;margin-top:6px">REAL-TIME THREAT PROTECTION</div>
       </div>
-    </body>
-  </html>`);
+      <div class="status">Secure Network Active <span class="dot"></span></div>
+    </div>
+
+    <section class="left">
+      <div class="panel shield">
+        <svg viewBox="0 0 120 120" fill="none">
+          <path d="M60 8l38 16v28c0 27-16 50-38 60-22-10-38-33-38-60V24L60 8z" stroke="#ff2d2d" stroke-width="4"/>
+          <rect x="38" y="52" width="44" height="34" rx="7" fill="#ff2d2d"/>
+          <path d="M45 52v-9c0-10 7-18 15-18s15 8 15 18v9" stroke="#ff7b7b" stroke-width="6"/>
+          <circle cx="60" cy="69" r="5" fill="#1f0303"/>
+          <path d="M60 73v8" stroke="#1f0303" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="panel">
+        <div class="label">Threat Level</div>
+        <div class="critical">CRITICAL</div>
+        <div class="bars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div style="color:#aeb7c8;font-weight:800">High risk detected</div>
+      </div>
+      <div class="panel">
+        <div class="label">Security Log</div>
+        <ul class="log">
+          <li>Connection initiated</li>
+          <li>IP scanned</li>
+          <li>Behavior analysis</li>
+          <li>Suspicious pattern detected</li>
+          <li style="color:#ff5757">Access blocked</li>
+          <li>Connection terminated</li>
+        </ul>
+        <div style="margin-top:22px;color:#9ca3af;font-family:Consolas,monospace">TIME: ${timestamp}</div>
+      </div>
+    </section>
+
+    <section class="center">
+      <div class="panel main">
+        <div class="soc-title">NS.ai Security Operation Centre</div>
+        <div class="denied">⚠ Access Denied ⚠</div>
+        <div class="code">403</div>
+        <div class="forbidden">Forbidden</div>
+        <p class="msg">Your IP address is temporarily suspended due to suspicious activity detected by NS.ai SOC.</p>
+
+        <div class="data">
+          <div class="row"><div class="k">IP Address</div><div class="v">${safeIp}</div></div>
+          <div class="row"><div class="k">Reason</div><div class="v">${safeReason}</div></div>
+          <div class="row"><div class="k">Detected By</div><div class="v">NS.ai Security Firewall</div></div>
+          <div class="row"><div class="k">Status</div><div class="v">BLOCKED</div></div>
+          <div class="row"><div class="k">Contact</div><div class="v">naitik.infosec@gmail.com</div></div>
+        </div>
+
+        <div class="notice">
+          This action has been taken to protect the portfolio systems and other users from potential threats.
+          If you believe this is a mistake, contact the administrator.
+        </div>
+      </div>
+    </section>
+
+    <section class="right">
+      <div class="panel">
+        <div class="label">Location Detected</div>
+        <div class="map"></div>
+        <div class="sideRows">
+          <div class="sideRow"><span>Country</span><b>Unknown</b></div>
+          <div class="sideRow"><span>Region</span><b>Unknown</b></div>
+          <div class="sideRow"><span>City</span><b>Unknown</b></div>
+          <div class="sideRow"><span>ISP</span><b>Unknown ISP</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="label">Addresses Tried</div>
+        <ul class="log">
+          <li>/admin</li>
+          <li>/api/login</li>
+          <li>/wp-admin</li>
+          <li>/config.php</li>
+          <li>/.env</li>
+        </ul>
+      </div>
+      <div class="panel help">
+        <div class="label">Need Help?</div>
+        <p style="color:#cbd5e1;line-height:1.6;font-weight:750">If you believe this is a mistake, contact the administrator.</p>
+        <a href="mailto:naitik.infosec@gmail.com">naitik.infosec@gmail.com</a>
+      </div>
+    </section>
+
+    <div class="footer">Stay secure. Stay protected.<br><b>NS.ai Security Operation Centre</b><br><span style="font-size:12px">Developed by Naitik Soni</span></div>
+  </main>
+</body>
+</html>`);
 }
 
 async function socMiddleware(req, res, next) {
@@ -492,7 +649,7 @@ async function socMiddleware(req, res, next) {
       ...(await getSecurityContext(req, ip, "AUTO_BLOCK"))
     });
 
-    sendNsaiSecurityAlert({
+    await sendNsaiSecurityAlert({
       title: "Automatic Traffic Block Activated",
       severity: "CRITICAL",
       ip,
@@ -2004,12 +2161,38 @@ app.get("/api/ns-control/resume-download", async (req, res) => {
     const file = await ResumeFile.findOne().sort({ createdAt: -1 });
     if (!file) return res.status(404).send("Resume not found");
 
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
+    const ip = cleanIp(req.query.publicIp || forwardedIp || req.clientIp || req.ip);
+    const geo = await lookupIpGeo(ip);
+
+    const uaString = req.headers["user-agent"] || "";
+    const parser = new UAParser(uaString);
+    const uaResult = parser.getResult();
+
+    await ResumeDownload.create({
+      ip,
+      publicIp: ip,
+      page: "/resume-download",
+      city: geo.city || "Unknown",
+      region: geo.region || "Unknown",
+      country: geo.country || "Unknown",
+      isp: geo.isp || "Unknown",
+      lat: geo.lat || null,
+      lng: geo.lng || null,
+      browser: `${uaResult.browser?.name || "Unknown"}${uaResult.browser?.version ? " " + uaResult.browser.version.split(".")[0] : ""}`,
+      os: `${uaResult.os?.name || "Unknown"}${uaResult.os?.version ? " " + uaResult.os.version : ""}`,
+      device: uaResult.device?.type ? uaResult.device.type.charAt(0).toUpperCase() + uaResult.device.type.slice(1) : "Desktop",
+      userAgent: uaString,
+      createdAt: new Date()
+    });
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=Naitik-Soni-Resume.pdf");
     res.setHeader("Content-Length", file.data.length);
 
     return res.send(file.data);
   } catch (error) {
+    console.log("Resume download failed:", error.message);
     return res.status(500).send("Resume download failed");
   }
 });
