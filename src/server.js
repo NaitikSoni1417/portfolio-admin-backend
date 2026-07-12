@@ -314,7 +314,7 @@ function escapeHtml(str) {
 
 const SANITIZE_ALLOWED_TAGS = ["strong", "em", "b", "i", "u", "br", "p", "ul", "ol", "li", "span"];
 const SANITIZE_ALLOWED_ATTRS = {
-  span: ["style", "class"], strong: ["class"], em: ["class"],
+  span: ["style", "class", "data-cyan"], strong: ["class"], em: ["class"],
   b: ["class"], i: ["class"], u: ["class"], p: ["class"], li: ["class"]
 };
 
