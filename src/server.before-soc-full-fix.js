@@ -9,15 +9,8 @@ import { UAParser } from "ua-parser-js";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
-
-// Google Generative AI — initialized once at startup for the /api/ns-ai endpoint.
-// If GEMINI_API_KEY is missing, genAI will be null and the route returns a 503.
-const genAI = process.env.GEMINI_API_KEY
-  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-  : null;
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -35,6 +28,8 @@ const upload = multer({
     cb(null, true);
   }
 });
+
+  process.env.GEMINI_API_KEY
 
 const app = express();
 app.set("trust proxy", true);
@@ -69,10 +64,20 @@ const visitorSchema = new mongoose.Schema({
   region: String,
   country: String,
   isp: String,
+  isp: String,
   lat: Number,
   lng: Number,
   userAgent: String,
   attemptedKey: String,
+  city: String,
+  region: String,
+  country: String,
+  isp: String,
+  lat: Number,
+  lng: Number,
+  browser: String,
+  os: String,
+  device: String,
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -191,13 +196,12 @@ const MusicPlay = mongoose.model("MusicPlay", musicPlaySchema);
 const portfolioContentSchema = new mongoose.Schema({
   heroTitle: { type: String, default: "Naitik Soni" },
   heroSubtitle: { type: String, default: "Cybersecurity Engineer & Ethical Hacker" },
-  profilePhoto: { type: String, default: "" },
   cpiText: { type: String, default: "Cybersecurity Engineer • Founder • Full Stack Developer" },
   statRank: { type: String, default: "20%" },
   statSuccess: { type: String, default: "100%" },
   statCompanies: { type: String, default: "10+" },
   statCpi: { type: String, default: "6.9" },
-  aboutText: { type: String, default: "I am <b>Naitik Soni</b> (<span data-cyan=\"true\">NScyber1417</span>), a <b>Cybersecurity Engineer</b>, <span data-cyan=\"true\">Ethical Hacker</span>, and <b>Full Stack Developer</b> focused on building <span data-cyan=\"true\">secure, scalable, and high-performance</span> digital systems. Currently studying at <b>Gujarat Technological University (GTU)</b> via <span data-cyan=\"true\">SVIT Vasad</span>. Passionate about <b>ethical hacking</b>, <span data-cyan=\"true\">building secure systems</span>, and solving <b>real-world security challenges</b>.<br><br>With a <b>Global Rank of 20% on TryHackMe</b>, I specialize in <span data-cyan=\"true\">practical cybersecurity</span>, <b>offensive security research</b>, <span data-cyan=\"true\">penetration testing</span>, and <b>vulnerability analysis</b>.<br><br>I developed <b>WebinfoX</b>, a <span data-cyan=\"true\">Python-based reconnaissance automation toolkit</span> focused on domain intelligence gathering, infrastructure discovery, DNS analysis, and attack surface mapping.<br><br>I also built <b>NSphotoX</b>, an <span data-cyan=\"true\">advanced image OSINT & metadata forensics platform</span> designed for ethical cybersecurity investigations. It includes EXIF metadata analysis, GPS intelligence, OCR extraction, AI-powered risk analysis, reverse image search integration, HTML/PDF forensic reporting, and cyberpunk-style investigation dashboards.<br><br>I am also the <span data-cyan=\"true\">Founder of NS Indian Cyber Army's</span>, a growing cybersecurity community with <b>500+ active members</b> from <span data-cyan=\"true\">33+ different countries</span>. I actively mentor juniors in <b>Penetration Testing</b>, <span data-cyan=\"true\">Malware Analysis</span>, and <b>IOT Security</b> while promoting ethical hacking and cybersecurity awareness.<br><br>Alongside cybersecurity, I work with <span data-cyan=\"true\">React</span>, <b>Tailwind CSS</b>, <span data-cyan=\"true\">Node.js</span>, <b>Python/Flask</b>, <span data-cyan=\"true\">MySQL</span>, and <b>MongoDB</b>.<br><br>Beyond technical development, I am also the <span data-cyan=\"true\">Founder of NS Indian Cyber Army's</span>, a rapidly growing cybersecurity community with <b>500+ active members</b> across <span data-cyan=\"true\">33+ different countries</span>. Through this initiative, I actively mentor juniors in <b>Penetration Testing</b>, <span data-cyan=\"true\">Malware Analysis</span>, and <b>IOT Security</b> while promoting ethical hacking, responsible disclosure, and practical cybersecurity learning within the community." },
+  aboutText: { type: String, default: "I build secure, modern and high-performance digital products." },
   resumeUrl: { type: String, default: "/Resume-Naitik-Soni.pdf" },
   githubUrl: { type: String, default: "" },
   linkedinUrl: { type: String, default: "" },
@@ -293,64 +297,7 @@ function isAdminProtectedIp(ip) {
     .map((x) => cleanIp(x.trim()))
     .filter(Boolean);
 
-  if (safeIps.includes(cleanIp(ip))) return true;
-
-  if (process.env.NODE_ENV !== "production") {
-    const devSafeIps = ["127.0.0.1", "::1", "localhost"];
-    if (devSafeIps.includes(cleanIp(ip))) return true;
-  }
-
-  return false;
-}
-
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-const SANITIZE_ALLOWED_TAGS = ["strong", "em", "b", "i", "u", "br", "p", "ul", "ol", "li", "span"];
-const SANITIZE_ALLOWED_ATTRS = {
-  span: ["style", "class", "data-cyan"], strong: ["class"], em: ["class"],
-  b: ["class"], i: ["class"], u: ["class"], p: ["class"], li: ["class"]
-};
-
-function sanitizeHtmlInput(html) {
-  if (!html || typeof html !== "string") return html;
-  let out = html;
-  out = out.replace(/<script[\s\S]*?<\/script>/gi, "");
-  out = out.replace(/<iframe[\s\S]*?<\/iframe>/gi, "");
-  out = out.replace(/<object[\s\S]*?<\/object>/gi, "");
-  out = out.replace(/<embed[\s\S]*?>/gi, "");
-  out = out.replace(/<svg[\s\S]*?<\/svg>/gi, "");
-  out = out.replace(/<math[\s\S]*?<\/math>/gi, "");
-  out = out.replace(/<style[\s\S]*?<\/style>/gi, "");
-  out = out.replace(/<link[\s\S]*?>/gi, "");
-  out = out.replace(/<meta[\s\S]*?>/gi, "");
-  out = out.replace(/<form[\s\S]*?<\/form>/gi, "");
-  out = out.replace(/<audio[\s\S]*?<\/audio>/gi, "");
-  out = out.replace(/<video[\s\S]*?<\/video>/gi, "");
-  out = out.replace(/<canvas[\s\S]*?<\/canvas>/gi, "");
-  out = out.replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-  out = out.replace(/\bhref\s*=\s*(?:"[^"]*javascript:[^"]*"|'[^']*javascript:[^']*')/gi, "");
-  out = out.replace(/\bsrc\s*=\s*(?:"[^"]*javascript:[^"]*"|'[^']*javascript:[^']*')/gi, "");
-  out = out.replace(/\bhref\s*=\s*(?:"[^"]*data:[^"]*"|'[^']*data:[^']*')/gi, "");
-  out = out.replace(/\bsrc\s*=\s*(?:"[^"]*data:[^"]*"|'[^']*data:[^']*')/gi, "");
-  out = out.replace(/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/gi, (tag) => {
-    const name = tag.match(/^<([a-zA-Z]+)/)[1].toLowerCase();
-    if (!SANITIZE_ALLOWED_TAGS.includes(name)) return "";
-    const m = tag.match(/^<([a-zA-Z]+)/);
-    const allowed = SANITIZE_ALLOWED_ATTRS[name];
-    if (!allowed) return tag.replace(/\s+[a-zA-Z-]+=(?:"[^"]*"|'[^']*')/g, "");
-    return tag.replace(/\s+([a-zA-Z-]+)=(?:"[^"]*"|'[^']*')/g, (match, attr) =>
-      allowed.includes(attr.toLowerCase()) ? match : ""
-    );
-  });
-  return out;
+  return safeIps.includes(cleanIp(ip));
 }
 
 function getMailTransporter() {
@@ -385,20 +332,20 @@ function nsaiSecurityMailTemplate({ title, severity, ip, reason, path, info = {}
     <div style="max-width:760px;margin:0 auto;padding:28px">
       <div style="background:linear-gradient(135deg,#020617,#0f172a,#083344);border-radius:28px;padding:28px;color:#fff;box-shadow:0 25px 90px rgba(15,23,42,.25)">
         <p style="margin:0;color:#67e8f9;font-size:12px;font-weight:900;letter-spacing:5px">NS.ai SECURITY OPERATION CENTRE</p>
-        <h1 style="margin:14px 0 8px;font-size:30px;line-height:1.1">${escapeHtml(title)}</h1>
+        <h1 style="margin:14px 0 8px;font-size:30px;line-height:1.1">${title}</h1>
         <p style="margin:0;color:#cbd5e1;font-size:15px;font-weight:700">Sent by - NS.ai Security Operation Centre</p>
       </div>
 
       <div style="margin-top:18px;background:rgba(255,255,255,.88);border:1px solid rgba(255,255,255,.9);border-radius:26px;padding:24px;box-shadow:0 20px 70px rgba(15,23,42,.12)">
-        <div style="display:inline-block;background:${severity === "CRITICAL" ? "#fee2e2" : "#fef3c7"};color:${severity === "CRITICAL" ? "#dc2626" : "#b45309"};padding:10px 14px;border-radius:999px;font-weight:900;font-size:12px;letter-spacing:1px">${escapeHtml(severity)}</div>
+        <div style="display:inline-block;background:${severity === "CRITICAL" ? "#fee2e2" : "#fef3c7"};color:${severity === "CRITICAL" ? "#dc2626" : "#b45309"};padding:10px 14px;border-radius:999px;font-weight:900;font-size:12px;letter-spacing:1px">${severity}</div>
         <h2 style="margin:18px 0 8px;font-size:22px">Suspicious activity detected</h2>
-        <p style="margin:0;color:#475569;font-weight:700;line-height:1.7">${escapeHtml(reason)}</p>
+        <p style="margin:0;color:#475569;font-weight:700;line-height:1.7">${reason}</p>
 
         <table style="width:100%;margin-top:20px;border-collapse:separate;border-spacing:0 10px">
           ${rows.map(([k,v]) => `
           <tr>
-            <td style="width:160px;background:#f8fafc;padding:14px;border-radius:14px 0 0 14px;color:#64748b;font-size:12px;font-weight:900;text-transform:uppercase">${escapeHtml(k)}</td>
-            <td style="background:#f8fafc;padding:14px;border-radius:0 14px 14px 0;font-weight:800;word-break:break-word">${escapeHtml(v) || "Unknown"}</td>
+            <td style="width:160px;background:#f8fafc;padding:14px;border-radius:14px 0 0 14px;color:#64748b;font-size:12px;font-weight:900;text-transform:uppercase">${k}</td>
+            <td style="background:#f8fafc;padding:14px;border-radius:0 14px 14px 0;font-weight:800;word-break:break-word">${v || "Unknown"}</td>
           </tr>`).join("")}
         </table>
 
@@ -419,7 +366,7 @@ async function sendNsaiSecurityAlert(payload) {
   try {
     const transporter = getMailTransporter();
     if (!transporter) {
-      console.warn("⚠️  NS.ai SOC mail skipped: MAIL_USER / MAIL_PASS not configured in environment.");
+      console.log("NS.ai SOC mail skipped: MAIL_USER / MAIL_PASS missing");
       return;
     }
 
@@ -429,46 +376,207 @@ async function sendNsaiSecurityAlert(payload) {
       subject: `🚨 ${payload.severity} NS.ai SOC Alert - ${payload.ip} - ${new Date().toLocaleString("en-IN")}`,
       html: nsaiSecurityMailTemplate(payload)
     });
-
-    console.log(`✅ NS.ai SOC alert sent → ${SOC_ADMIN_EMAIL} [${payload.severity}] IP: ${payload.ip}`);
   } catch (e) {
-    // Non-fatal: email failure must never crash the security pipeline
-    console.error(`❌ NS.ai SOC mail failed [${payload.severity}] IP: ${payload.ip} →`, e.message);
+    console.log("NS.ai SOC mail failed:", e.message);
   }
 }
 
 function suspendedResponse(res, ip, reason = "Suspicious activity detected") {
-  const safeIp = String(ip || "Unknown").replace(/[<>"'/]/g, "");
-  const safeReason = String(reason || "Suspicious activity detected").replace(/[<>"'/]/g, "");
+  const safeIp = String(ip || "Unknown").replace(/[<>"']/g, "");
+  const safeReason = String(reason || "Suspicious activity detected").replace(/[<>"']/g, "");
+  const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-  return res.status(403).json({
-    error: "Access Denied",
-    reason: safeReason,
-    ip: safeIp,
-    message: "Your IP has been temporarily suspended. Contact the administrator."
-  });
+  return res.status(403).send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>403 • NS.ai SOC Access Denied</title>
+  <style>
+    *{box-sizing:border-box}
+    :root{--red:#ff2d2d;--red2:#ff5757;--dark:#020409;--panel:rgba(8,12,22,.78);--line:rgba(255,45,45,.34);--text:#f8fafc;--muted:#aeb7c8;--cyan:#67e8f9}
+    body{
+      margin:0;min-height:100vh;overflow-x:hidden;color:var(--text);
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+      background:
+        radial-gradient(circle at 50% 35%,rgba(255,0,0,.18),transparent 28%),
+        radial-gradient(circle at 85% 10%,rgba(255,45,45,.12),transparent 28%),
+        linear-gradient(135deg,#030712 0%,#060912 42%,#09030a 100%);
+    }
+    body:before{
+      content:"";position:fixed;inset:0;pointer-events:none;opacity:.34;
+      background-image:
+        linear-gradient(rgba(255,45,45,.055) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(255,45,45,.055) 1px,transparent 1px);
+      background-size:42px 42px;
+      mask-image:radial-gradient(circle at center,black,transparent 78%);
+    }
+    body:after{
+      content:"";position:fixed;inset:0;pointer-events:none;mix-blend-mode:screen;opacity:.14;
+      background:repeating-linear-gradient(0deg,rgba(255,255,255,.08) 0 1px,transparent 1px 4px);
+      animation:scan 7s linear infinite;
+    }
+    @keyframes scan{0%{transform:translateY(-40px)}100%{transform:translateY(40px)}}
+    @keyframes glitch{0%,100%{text-shadow:0 0 24px rgba(255,45,45,.9)}20%{text-shadow:8px 0 #ff0000,-8px 0 #00e5ff}22%{text-shadow:none}40%{transform:skewX(-2deg)}42%{transform:skewX(2deg)}}
+    @keyframes pulse{0%,100%{opacity:.65;filter:drop-shadow(0 0 18px rgba(255,45,45,.55))}50%{opacity:1;filter:drop-shadow(0 0 36px rgba(255,45,45,.95))}}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+    .wrap{position:relative;min-height:100vh;padding:28px;display:grid;grid-template-columns:330px 1fr 360px;gap:22px;align-items:stretch}
+    .border{
+      position:fixed;inset:14px;pointer-events:none;border:1px solid rgba(255,45,45,.35);
+      box-shadow:inset 0 0 70px rgba(255,0,0,.08),0 0 55px rgba(255,0,0,.10);
+      clip-path:polygon(18px 0,calc(100% - 18px) 0,100% 18px,100% calc(100% - 18px),calc(100% - 18px) 100%,18px 100%,0 calc(100% - 18px),0 18px);
+    }
+    .top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin-bottom:-4px}
+    .brand{font-weight:950;letter-spacing:.24em;color:var(--red);text-transform:uppercase}
+    .status{font-size:12px;font-weight:900;color:#22c55e;text-transform:uppercase;letter-spacing:.12em}
+    .dot{display:inline-block;width:13px;height:13px;background:#22c55e;border-radius:50%;margin-left:9px;box-shadow:0 0 24px #22c55e}
+    .panel{
+      position:relative;border:1px solid var(--line);background:linear-gradient(180deg,rgba(10,15,26,.82),rgba(2,6,14,.72));
+      border-radius:22px;padding:24px;box-shadow:0 30px 100px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.05);
+      backdrop-filter:blur(18px);overflow:hidden;
+    }
+    .panel:before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(90deg,transparent,rgba(255,45,45,.08),transparent);transform:translateX(-100%);animation:shine 4s linear infinite}
+    @keyframes shine{100%{transform:translateX(100%)}}
+    .left,.right{display:flex;flex-direction:column;gap:20px}
+    .shield{height:240px;display:flex;align-items:center;justify-content:center}
+    .shield svg{width:170px;height:170px;animation:pulse 2.1s infinite}
+    .label{font-size:13px;font-weight:950;letter-spacing:.18em;color:var(--red);text-transform:uppercase}
+    .critical{font-size:32px;font-weight:950;color:var(--red);letter-spacing:.08em;margin:12px 0}
+    .bars{display:flex;gap:6px;margin:14px 0}.bars span{height:11px;width:42px;background:var(--red);box-shadow:0 0 18px rgba(255,45,45,.7)}.bars span:nth-child(n+6){background:#111827;box-shadow:none;border:1px solid rgba(255,255,255,.08)}
+    .log{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:13px;color:#cbd5e1;font-family:"SFMono-Regular",Consolas,monospace;font-size:14px}
+    .log li:before{content:"> ";color:var(--red)}
+    .center{display:flex;align-items:center;justify-content:center;min-height:720px}
+    .main{width:100%;max-width:800px;text-align:center;padding:38px}
+    .soc-title{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:10px 24px;color:var(--red2);font-weight:950;letter-spacing:.18em;text-transform:uppercase;background:rgba(255,45,45,.05)}
+    .denied{margin:28px 0 0;font-size:36px;font-weight:950;color:var(--red2);letter-spacing:.12em;text-transform:uppercase}
+    .code{font-size:150px;line-height:.86;margin:18px 0 8px;font-weight:1000;color:var(--red);letter-spacing:.04em;animation:glitch 3.2s infinite;text-shadow:0 0 36px rgba(255,45,45,.88)}
+    .forbidden{font-size:40px;font-weight:950;color:var(--red2);letter-spacing:.22em;text-transform:uppercase}
+    .msg{max-width:620px;margin:22px auto;color:#d7dce7;font-size:18px;line-height:1.65;font-weight:700}
+    .data{margin:26px auto 0;text-align:left;border:1px solid var(--line);border-radius:18px;overflow:hidden;max-width:650px;background:rgba(0,0,0,.34)}
+    .row{display:grid;grid-template-columns:190px 1fr;border-bottom:1px solid rgba(255,45,45,.18)}
+    .row:last-child{border-bottom:0}.k{padding:15px 18px;color:#b9c0cf;font-family:Consolas,monospace;text-transform:uppercase}.v{padding:15px 18px;color:var(--red2);font-weight:950;font-family:Consolas,monospace;word-break:break-word}
+    .notice{margin:22px auto 0;max-width:650px;border:1px solid rgba(255,45,45,.24);border-radius:18px;padding:18px;color:#cbd5e1;background:rgba(255,255,255,.04);text-align:left;line-height:1.55}
+    .map{height:190px;position:relative;border-radius:18px;background:radial-gradient(circle at 68% 56%,rgba(255,45,45,.5),transparent 7%),linear-gradient(135deg,rgba(255,255,255,.05),rgba(255,255,255,.015));overflow:hidden}
+    .map:before{content:"WORLD THREAT MAP";position:absolute;top:16px;left:18px;color:var(--red);font-weight:950;font-size:12px;letter-spacing:.16em}
+    .map:after{content:"";position:absolute;inset:54px 22px 20px;background:
+      radial-gradient(circle at 17% 42%,rgba(255,255,255,.28) 0 2px,transparent 3px),
+      radial-gradient(circle at 31% 35%,rgba(255,255,255,.24) 0 2px,transparent 3px),
+      radial-gradient(circle at 54% 45%,rgba(255,255,255,.24) 0 2px,transparent 3px),
+      radial-gradient(circle at 70% 50%,rgba(255,45,45,.95) 0 5px,transparent 7px),
+      radial-gradient(circle at 82% 38%,rgba(255,255,255,.22) 0 2px,transparent 3px);
+      border:1px dashed rgba(255,255,255,.12);border-radius:16px;opacity:.9}
+    .sideRows{display:grid;gap:11px;margin-top:16px}.sideRow{display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,45,45,.15);padding-bottom:9px;color:#cbd5e1}.sideRow b{color:var(--red2)}
+    .help a{color:var(--red2);font-weight:950;text-decoration:none}
+    .footer{grid-column:1/-1;text-align:center;color:#9ca3af;font-weight:800}.footer b{color:var(--red2)}
+    @media (max-width:1100px){.wrap{grid-template-columns:1fr}.center{min-height:auto}.code{font-size:105px}.right,.left{grid-row:auto}.main{padding:26px}.row{grid-template-columns:1fr}.wrap{padding:18px}}
+  </style>
+</head>
+<body>
+  <div class="border"></div>
+  <main class="wrap">
+    <div class="top">
+      <div>
+        <div class="brand">NS.ai SOC</div>
+        <div style="color:#9ca3af;font-size:12px;font-weight:800;margin-top:6px">REAL-TIME THREAT PROTECTION</div>
+      </div>
+      <div class="status">Secure Network Active <span class="dot"></span></div>
+    </div>
+
+    <section class="left">
+      <div class="panel shield">
+        <svg viewBox="0 0 120 120" fill="none">
+          <path d="M60 8l38 16v28c0 27-16 50-38 60-22-10-38-33-38-60V24L60 8z" stroke="#ff2d2d" stroke-width="4"/>
+          <rect x="38" y="52" width="44" height="34" rx="7" fill="#ff2d2d"/>
+          <path d="M45 52v-9c0-10 7-18 15-18s15 8 15 18v9" stroke="#ff7b7b" stroke-width="6"/>
+          <circle cx="60" cy="69" r="5" fill="#1f0303"/>
+          <path d="M60 73v8" stroke="#1f0303" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="panel">
+        <div class="label">Threat Level</div>
+        <div class="critical">CRITICAL</div>
+        <div class="bars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div style="color:#aeb7c8;font-weight:800">High risk detected</div>
+      </div>
+      <div class="panel">
+        <div class="label">Security Log</div>
+        <ul class="log">
+          <li>Connection initiated</li>
+          <li>IP scanned</li>
+          <li>Behavior analysis</li>
+          <li>Suspicious pattern detected</li>
+          <li style="color:#ff5757">Access blocked</li>
+          <li>Connection terminated</li>
+        </ul>
+        <div style="margin-top:22px;color:#9ca3af;font-family:Consolas,monospace">TIME: ${timestamp}</div>
+      </div>
+    </section>
+
+    <section class="center">
+      <div class="panel main">
+        <div class="soc-title">NS.ai Security Operation Centre</div>
+        <div class="denied">⚠ Access Denied ⚠</div>
+        <div class="code">403</div>
+        <div class="forbidden">Forbidden</div>
+        <p class="msg">Your IP address is temporarily suspended due to suspicious activity detected by NS.ai SOC.</p>
+
+        <div class="data">
+          <div class="row"><div class="k">IP Address</div><div class="v">${safeIp}</div></div>
+          <div class="row"><div class="k">Reason</div><div class="v">${safeReason}</div></div>
+          <div class="row"><div class="k">Detected By</div><div class="v">NS.ai Security Firewall</div></div>
+          <div class="row"><div class="k">Status</div><div class="v">BLOCKED</div></div>
+          <div class="row"><div class="k">Contact</div><div class="v">naitik.infosec@gmail.com</div></div>
+        </div>
+
+        <div class="notice">
+          This action has been taken to protect the portfolio systems and other users from potential threats.
+          If you believe this is a mistake, contact the administrator.
+        </div>
+      </div>
+    </section>
+
+    <section class="right">
+      <div class="panel">
+        <div class="label">Location Detected</div>
+        <div class="map"></div>
+        <div class="sideRows">
+          <div class="sideRow"><span>Country</span><b>Unknown</b></div>
+          <div class="sideRow"><span>Region</span><b>Unknown</b></div>
+          <div class="sideRow"><span>City</span><b>Unknown</b></div>
+          <div class="sideRow"><span>ISP</span><b>Unknown ISP</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="label">Addresses Tried</div>
+        <ul class="log">
+          <li>/admin</li>
+          <li>/api/login</li>
+          <li>/wp-admin</li>
+          <li>/config.php</li>
+          <li>/.env</li>
+        </ul>
+      </div>
+      <div class="panel help">
+        <div class="label">Need Help?</div>
+        <p style="color:#cbd5e1;line-height:1.6;font-weight:750">If you believe this is a mistake, contact the administrator.</p>
+        <a href="mailto:naitik.infosec@gmail.com">naitik.infosec@gmail.com</a>
+      </div>
+    </section>
+
+    <div class="footer">Stay secure. Stay protected.<br><b>NS.ai Security Operation Centre</b><br><span style="font-size:12px">Developed by Naitik Soni</span></div>
+  </main>
+</body>
+</html>`);
 }
 
 async function socMiddleware(req, res, next) {
-  const ip = getClientIp(req);
+  const ip = getClientIp(req, req.body?.publicIp || "");
   const now = Date.now();
   const windowMs = 30 * 1000;
   const blockMs = SOC_BLOCK_MS;
 
   if (isAdminProtectedIp(ip)) {
     return next();
-  }
-
-  if (isDevelopmentOrigin(req)) {
-    return next();
-  }
-
-  const authHeader = req.headers.authorization?.replace("Bearer ", "");
-  if (authHeader) {
-    try {
-      jwt.verify(authHeader, process.env.JWT_SECRET);
-      return next();
-    } catch {}
   }
 
   if (manualBlockedIps.has(ip)) {
@@ -586,16 +694,9 @@ app.use((req, res, next) => {
 
 
 
-function getClientIp(req) {
+function getClientIp(req, publicIp = "") {
   const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-  return cleanIp(forwardedIp || req.clientIp || req.ip);
-}
-
-function isDevelopmentOrigin(req) {
-  const origin = req.headers.origin || "";
-  const referer = req.headers.referer || "";
-  return origin.includes("localhost") || origin.includes("127.0.0.1") ||
-         referer.includes("localhost") || referer.includes("127.0.0.1");
+  return cleanIp(publicIp || forwardedIp || req.clientIp || req.ip);
 }
 
 function isBlocked(ip) {
@@ -657,24 +758,7 @@ async function getAdminKey() {
 
 async function blockGuard(req, res, next) {
   try {
-    const ip = getClientIp(req);
-
-    // FIX: Admin IPs in ADMIN_SAFE_IPS are never blocked by the firewall.
-    if (isAdminProtectedIp(ip)) return next();
-
-    // FIX: Localhost development requests bypass the block check entirely.
-    if (isDevelopmentOrigin(req)) return next();
-
-    // FIX: Authenticated admin sessions (valid JWT) bypass the block check.
-    // This ensures an admin can never be locked out of their own panel.
-    const authHeader = req.headers.authorization?.replace("Bearer ", "");
-    if (authHeader) {
-      try {
-        jwt.verify(authHeader, process.env.JWT_SECRET);
-        return next(); // Valid admin token — bypass block check entirely
-      } catch { /* Invalid or expired token — fall through to block check */ }
-    }
-
+    const ip = getClientIp(req, req.body?.publicIp || "");
     const blocked = await BlockedIP.findOne({ ip });
 
     if (blocked) {
@@ -685,9 +769,7 @@ async function blockGuard(req, res, next) {
 
       return suspendedResponse(res, ip, blocked.reason || "Blocked by NS.ai SOC");
     }
-  } catch (err) {
-    console.error("blockGuard error:", err.message);
-  }
+  } catch {}
   next();
 }
 
@@ -722,43 +804,29 @@ async function getGeo(ip) {
   }
 
   try {
-    const r = await fetch(`https://ipwho.is/${ip}`);
-    const d = await r.json();
-    if (d.success !== false) {
-      return {
-        city: d.city || d.region || "Unknown",
-        region: d.region || "Unknown",
-        country: d.country || "Unknown",
-        isp: d.connection?.isp || d.connection?.org || "Unknown",
-        lat: d.latitude || 22.3072,
-        lng: d.longitude || 73.1812
-      };
-    }
-  } catch { }
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,isp,query`);
+    const data = await res.json();
 
-  try {
-    const r = await fetch(`https://ipapi.co/${ip}/json/`);
-    const d = await r.json();
-    if (!d.error) {
-      return {
-        city: d.city || "Unknown",
-        region: d.region || "Unknown",
-        country: d.country_name || d.country || "Unknown",
-        isp: d.org || d.network || "Unknown",
-        lat: d.latitude || 22.3072,
-        lng: d.longitude || 73.1812
-      };
-    }
-  } catch { }
+    if (data.status !== "success") throw new Error("Geo failed");
 
-  return {
-    city: "Unknown",
-    region: "Unknown",
-    country: "Unknown",
-    isp: "Unknown",
-    lat: 22.3072,
-    lng: 73.1812
-  };
+    return {
+      city: data.city || data.regionName || "Unknown",
+      region: data.regionName || "Unknown",
+      country: data.country || "Unknown",
+      isp: data.isp || "Unknown",
+      lat: data.lat || 22.3072,
+      lng: data.lon || 73.1812
+    };
+  } catch {
+    return {
+      city: "Unknown",
+      region: "Unknown",
+      country: "Unknown",
+      isp: "Unknown",
+      lat: 22.3072,
+      lng: 73.1812
+    };
+  }
 }
 
 
@@ -781,7 +849,7 @@ app.post("/api/music/play", async (req, res) => {
 
     const userAgent = req.body.userAgent || req.headers["user-agent"] || "";
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
+    const ip = cleanIp(req.body.publicIp || forwardedIp || req.clientIp || req.ip);
     const geo = await getGeo(ip);
 
     const parser = new UAParser(userAgent);
@@ -975,7 +1043,7 @@ app.get("/", (req, res) => {
 
 app.get("/api/security/check", async (req, res) => {
   try {
-    const ip = getClientIp(req);
+    const ip = cleanIp(req.query.ip || req.headers["x-forwarded-for"]?.split(",")[0] || req.ip);
     const blocked = await BlockedIP.findOne({ ip });
 
     if (blocked) {
@@ -1004,10 +1072,10 @@ app.get("/api/test-suspended-page", (req, res) => {
   return suspendedResponse(res, req.query.ip || "88.88.88.88", "Demo suspended page preview");
 });
 
-app.post("/api/track", async (req, res) => {
+app.post("/api/track", socMiddleware, async (req, res) => {
   try {
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const rawIp = forwardedIp || req.clientIp || req.ip;
+    const rawIp = req.body.publicIp || req.body.ip || forwardedIp || req.clientIp || req.ip;
     const ip = cleanIp(rawIp);
 
     let geo = await lookupIpGeo(ip);
@@ -1079,11 +1147,26 @@ async function lookupIpGeo(ip) {
   }
 
   try {
+    const r = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,lat,lon,isp,org,as,query`);
+    const d = await r.json();
+    if (d.status === "success") {
+      return {
+        city: d.city || d.regionName || "Unknown",
+        region: d.regionName || "Unknown",
+        country: d.country || "Unknown",
+        isp: d.isp || d.org || d.as || "Unknown",
+        lat: d.lat || null,
+        lng: d.lon || null
+      };
+    }
+  } catch { }
+
+  try {
     const r = await fetch(`https://ipwho.is/${ip}`);
     const d = await r.json();
     if (d.success !== false) {
       return {
-        city: d.city || d.region || "Unknown",
+        city: d.city || "Unknown",
         region: d.region || "Unknown",
         country: d.country || "Unknown",
         isp: d.connection?.isp || d.connection?.org || "Unknown",
@@ -1151,9 +1234,9 @@ async function getSecurityContext(req, ip, key = "") {
 
 
 
-app.get("/api/admin/test-soc-mail", auth, async (req, res) => {
+app.get("/api/admin/test-soc-mail", async (req, res) => {
   try {
-    const ip = getClientIp(req);
+    const ip = getClientIp(req, req.query.publicIp || "");
     const info = await getSecurityContext(req, ip, "TEST_SOC_MAIL");
 
     await sendNsaiSecurityAlert({
@@ -1175,8 +1258,8 @@ app.get("/api/admin/test-soc-mail", auth, async (req, res) => {
 
 app.post("/api/admin/login", async (req, res) => {
   try {
-    const { key } = req.body;
-    const ip = getClientIp(req);
+    const { key, publicIp } = req.body;
+    const ip = getClientIp(req, publicIp);
     const ua = req.headers["user-agent"] || "";
     const sec = await getSecurityContext(req, ip, key);
 
@@ -1277,7 +1360,8 @@ app.post("/api/admin/login", async (req, res) => {
 
 app.post("/api/contact", async (req, res) => {
   try {
-    const ip = getClientIp(req);
+    const publicIp = req.body.publicIp || "";
+    const ip = getClientIp(req, publicIp);
     const geo = await getGeo(ip);
 
     const ua = req.headers["user-agent"] || req.body.userAgent || "";
@@ -1289,9 +1373,9 @@ app.post("/api/contact", async (req, res) => {
     const device = result.device?.type || "Desktop";
 
     const msg = await Message.create({
-      name: sanitizeHtmlInput(req.body.name || "Unknown"),
+      name: req.body.name || "Unknown",
       email: req.body.email || "Unknown",
-      message: sanitizeHtmlInput(req.body.message || ""),
+      message: req.body.message || "",
       ip,
       city: geo.city || "Unknown",
       region: geo.region || "Unknown",
@@ -1321,7 +1405,7 @@ app.post("/api/resume-download", async (req, res) => {
   try {
     const userAgent = req.body.userAgent || req.headers["user-agent"] || "";
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
+    const ip = cleanIp(req.body.publicIp || forwardedIp || req.clientIp || req.ip);
     const geo = await getGeo(ip);
 
     const parser = new UAParser(userAgent);
@@ -1329,7 +1413,7 @@ app.post("/api/resume-download", async (req, res) => {
 
     const item = await ResumeDownload.create({
       ip,
-      publicIp: ip,
+      publicIp: req.body.publicIp || ip,
       page: req.body.page || "/",
       city: geo.city,
       region: geo.region,
@@ -1375,84 +1459,75 @@ app.get("/api/admin/resume-downloads", auth, async (req, res) => {
 });
 
 app.get("/api/admin/dashboard", auth, async (req, res) => {
-  try {
-    const totalVisitors = await Visitor.countDocuments();
-    const totalMessages = await Message.countDocuments();
-    const unreadMessages = await Message.countDocuments({ status: "Unread" });
+  const totalVisitors = await Visitor.countDocuments();
+  const totalMessages = await Message.countDocuments();
+  const unreadMessages = await Message.countDocuments({ status: "Unread" });
 
-    // India timezone based today start
-    const now = new Date();
-    const indiaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    indiaNow.setHours(0, 0, 0, 0);
+  // India timezone based today start
+  const now = new Date();
+  const indiaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  indiaNow.setHours(0, 0, 0, 0);
 
-    // Convert India midnight back to UTC for MongoDB Date comparison
-    const todayStart = new Date(indiaNow.getTime() - 5.5 * 60 * 60 * 1000);
+  // Convert India midnight back to UTC for MongoDB Date comparison
+  const todayStart = new Date(indiaNow.getTime() - 5.5 * 60 * 60 * 1000);
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
 
-    // FIX: Real active sessions = visitors tracked in last 30 minutes (was fake random 1-10)
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
-    const activeSessions = await Visitor.countDocuments({ createdAt: { $gte: thirtyMinAgo } });
+  const todayViews = await Visitor.countDocuments({ createdAt: { $gte: todayStart } });
+  const recentVisitorsRaw = await Visitor.find().sort({ createdAt: -1 }).limit(50);
+  const messages = await Message.find().sort({ createdAt: -1 }).limit(20);
 
-    const todayViews = await Visitor.countDocuments({ createdAt: { $gte: todayStart } });
-    const recentVisitorsRaw = await Visitor.find().sort({ createdAt: -1 }).limit(50);
-    const messages = await Message.find().sort({ createdAt: -1 }).limit(20);
+  const recentVisitors = await Promise.all(
+    recentVisitorsRaw.map(async (v) => {
+      const visits = await Visitor.countDocuments({ visitorId: v.visitorId || v.ip });
+      const obj = v.toObject();
+      obj.visits = visits;
+      obj.isReturning = visits > 1;
+      return obj;
+    })
+  );
 
-    const recentVisitors = await Promise.all(
-      recentVisitorsRaw.map(async (v) => {
-        const visits = await Visitor.countDocuments({ visitorId: v.visitorId || v.ip });
-        const obj = v.toObject();
-        obj.visits = visits;
-        obj.isReturning = visits > 1;
-        return obj;
-      })
-    );
+  const topPages = await Visitor.aggregate([{ $group: { _id: "$page", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 6 }]);
+  const browsers = await Visitor.aggregate([{ $group: { _id: "$browser", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+  const devices = await Visitor.aggregate([{ $group: { _id: "$device", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+  const osStats = await Visitor.aggregate([{ $group: { _id: "$os", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
 
-    const topPages = await Visitor.aggregate([{ $group: { _id: "$page", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 6 }]);
-    const browsers = await Visitor.aggregate([{ $group: { _id: "$browser", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
-    const devices = await Visitor.aggregate([{ $group: { _id: "$device", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
-    const osStats = await Visitor.aggregate([{ $group: { _id: "$os", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+  const countries = await Visitor.aggregate([
+    { $group: { _id: "$country", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 8 }
+  ]);
 
-    const countries = await Visitor.aggregate([
-      { $group: { _id: "$country", count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 8 }
-    ]);
+  const cities = await Visitor.aggregate([
+    { $group: { _id: "$city", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 8 }
+  ]);
 
-    const cities = await Visitor.aggregate([
-      { $group: { _id: "$city", count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 8 }
-    ]);
+  const dailyViews = await Visitor.aggregate([
+    { $match: { createdAt: { $gte: sevenDaysAgo } } },
+    { $group: { _id: { $dateToString: { format: "%d/%m", date: "$createdAt" } }, views: { $sum: 1 } } },
+    { $sort: { _id: 1 } }
+  ]);
 
-    const dailyViews = await Visitor.aggregate([
-      { $match: { createdAt: { $gte: sevenDaysAgo } } },
-      { $group: { _id: { $dateToString: { format: "%d/%m", date: "$createdAt" } }, views: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
-    ]);
-
-    res.json({
-      totalVisitors,
-      todayViews,
-      activeSessions,
-      totalMessages,
-      unreadMessages,
-      recentVisitors,
-      messages,
-      topPages,
-      browsers,
-      devices,
-      osStats,
-      countries,
-      cities,
-      dailyViews
-    });
-  } catch (err) {
-    console.error("Dashboard error:", err.message);
-    res.status(500).json({ error: "Dashboard data fetch failed", details: err.message });
-  }
+  res.json({
+    totalVisitors,
+    todayViews,
+    activeSessions: Math.floor(Math.random() * 10) + 1,
+    totalMessages,
+    unreadMessages,
+    recentVisitors,
+    messages,
+    topPages,
+    browsers,
+    devices,
+    osStats,
+    countries,
+    cities,
+    dailyViews
+  });
 });
 
 
@@ -1473,14 +1548,6 @@ app.patch("/api/admin/messages/:id/status", auth, async (req, res) => {
 
 app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
   try {
-    if (!process.env.RESEND_API_KEY) {
-      return res.status(503).json({
-        error: "Email service not configured",
-        details: "RESEND_API_KEY is not set. Add it to your Render environment variables.",
-        code: "RESEND_NOT_CONFIGURED",
-      });
-    }
-
     const { reply } = req.body;
     if (!reply || !reply.trim()) {
       return res.status(400).json({ error: "Reply message is required" });
@@ -1495,10 +1562,10 @@ app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
           <h2 style="margin:0;color:#020617">Reply from Naitik Soni</h2>
           <p style="color:#64748b">Cybersecurity Engineer | Ethical Hacker</p>
           <div style="margin-top:22px;padding:20px;border-radius:18px;background:#f1f5f9;color:#0f172a;line-height:1.7">
-            ${escapeHtml(reply).replace(/\n/g, "<br/>")}
+            ${reply.replace(/\n/g, "<br/>")}
           </div>
           <p style="margin-top:24px;color:#64748b;font-size:13px">
-            Original message from ${escapeHtml(msg.name) || "visitor"} was received through Naitik Soni Portfolio.
+            Original message from ${msg.name || "visitor"} was received through Naitik Soni Portfolio.
           </p>
         </div>
       </div>
@@ -1553,50 +1620,15 @@ app.delete("/api/admin/messages/:id", auth, async (req, res) => {
 app.patch("/api/admin/change-password", auth, async (req, res) => {
   try {
     const { newKey } = req.body;
-    if (!newKey || typeof newKey !== "string") {
-      return res.status(400).json({ error: "Password is required" });
-    }
-
-    const trimmed = newKey.trim();
-
-    if (trimmed.length < 12) {
-      return res.status(400).json({ error: "Password must be at least 12 characters" });
-    }
-    if (trimmed.length > 128) {
-      return res.status(400).json({ error: "Password must not exceed 128 characters" });
-    }
-    if (!/[A-Z]/.test(trimmed)) {
-      return res.status(400).json({ error: "Password must contain at least one uppercase letter" });
-    }
-    if (!/[a-z]/.test(trimmed)) {
-      return res.status(400).json({ error: "Password must contain at least one lowercase letter" });
-    }
-    if (!/[0-9]/.test(trimmed)) {
-      return res.status(400).json({ error: "Password must contain at least one number" });
-    }
-    if (!/[^A-Za-z0-9]/.test(trimmed)) {
-      return res.status(400).json({ error: "Password must contain at least one special character" });
-    }
-    if (/^\s+$/.test(trimmed)) {
-      return res.status(400).json({ error: "Password must not be whitespace only" });
-    }
-    if (/(.)\1{2,}/.test(trimmed)) {
-      return res.status(400).json({ error: "Password must not contain 3+ repeated characters" });
-    }
-    if (/^(012|123|234|345|456|567|678|789|890|abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz)/i.test(trimmed)) {
-      return res.status(400).json({ error: "Password must not start with a sequential pattern" });
-    }
-    const lower = trimmed.toLowerCase();
-    const weakPasswords = ["password", "letmein", "welcome", "admin", "changeme", "master", "qwerty", "login", "passw0rd"];
-    if (weakPasswords.some((w) => lower.includes(w))) {
-      return res.status(400).json({ error: "Password is too common. Choose a stronger password" });
+    if (!newKey || newKey.length < 4) {
+      return res.status(400).json({ error: "Password must be at least 4 characters" });
     }
 
     let setting = await Setting.findOne();
     if (!setting) {
-      setting = await Setting.create({ adminKey: trimmed });
+      setting = await Setting.create({ adminKey: newKey });
     } else {
-      setting.adminKey = trimmed;
+      setting.adminKey = newKey;
       setting.updatedAt = new Date();
       await setting.save();
     }
@@ -1922,19 +1954,7 @@ app.post("/api/admin/soc/lockdown", auth, async (req, res) => {
 app.post("/api/admin/soc/unblock", auth, async (req, res) => {
   const { ip } = req.body;
   if (!ip) return res.status(400).json({ error: "IP required" });
-
-  // Remove from in-memory firewall map
   socFirewall.delete(ip);
-  // Remove from manual block set
-  manualBlockedIps.delete(ip);
-
-  // FIX: Also remove from MongoDB so the block does not survive a server restart
-  try {
-    await BlockedIP.deleteOne({ ip });
-  } catch (e) {
-    console.error("SOC unblock DB remove failed:", e.message);
-  }
-
   addSocEvent({
     type: "MANUAL_UNBLOCK",
     severity: "LOW",
@@ -2153,7 +2173,7 @@ app.get("/api/ns-control/resume-download", async (req, res) => {
     if (!file) return res.status(404).send("Resume not found");
 
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
+    const ip = cleanIp(req.query.publicIp || forwardedIp || req.clientIp || req.ip);
     const geo = await lookupIpGeo(ip);
 
     const uaString = req.headers["user-agent"] || "";
@@ -2200,11 +2220,7 @@ app.get("/api/ns-control/content", async (req, res) => {
 app.put("/api/ns-control/content", auth, async (req, res) => {
   try {
     const content = await getPortfolioContentDoc();
-    const sanitized = { ...req.body };
-    if (sanitized.aboutText && typeof sanitized.aboutText === "string") {
-      sanitized.aboutText = sanitizeHtmlInput(sanitized.aboutText);
-    }
-    Object.assign(content, sanitized, { updatedAt: new Date() });
+    Object.assign(content, req.body, { updatedAt: new Date() });
     await content.save();
     res.json({ success: true, message: "NS Control Hub content updated", data: content });
   } catch (error) {
@@ -2223,15 +2239,11 @@ app.get("/api/ns-control/projects", async (req, res) => {
 
 app.post("/api/ns-control/projects", auth, async (req, res) => {
   try {
-    const sanitized = { ...req.body };
-    if (sanitized.description && typeof sanitized.description === "string") {
-      sanitized.description = sanitizeHtmlInput(sanitized.description);
-    }
     const item = await PortfolioProject.create({
-      ...sanitized,
-      techStack: Array.isArray(sanitized.techStack)
-        ? sanitized.techStack
-        : String(sanitized.techStack || "").split(",").map(x => x.trim()).filter(Boolean)
+      ...req.body,
+      techStack: Array.isArray(req.body.techStack)
+        ? req.body.techStack
+        : String(req.body.techStack || "").split(",").map(x => x.trim()).filter(Boolean)
     });
     res.status(201).json({ success: true, message: "Project saved", data: item });
   } catch (error) {
@@ -2242,9 +2254,6 @@ app.post("/api/ns-control/projects", auth, async (req, res) => {
 app.patch("/api/ns-control/projects/:id", auth, async (req, res) => {
   try {
     const update = { ...req.body };
-    if (update.description && typeof update.description === "string") {
-      update.description = sanitizeHtmlInput(update.description);
-    }
     if (update.techStack && !Array.isArray(update.techStack)) {
       update.techStack = String(update.techStack).split(",").map(x => x.trim()).filter(Boolean);
     }
@@ -2275,11 +2284,7 @@ app.get("/api/ns-control/certifications", async (req, res) => {
 
 app.post("/api/ns-control/certifications", auth, async (req, res) => {
   try {
-    const sanitized = { ...req.body };
-    if (sanitized.analysisText && typeof sanitized.analysisText === "string") {
-      sanitized.analysisText = sanitizeHtmlInput(sanitized.analysisText);
-    }
-    const item = await PortfolioCertification.create(sanitized);
+    const item = await PortfolioCertification.create(req.body);
     res.status(201).json({ success: true, message: "Certification saved", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -2288,11 +2293,7 @@ app.post("/api/ns-control/certifications", auth, async (req, res) => {
 
 app.patch("/api/ns-control/certifications/:id", auth, async (req, res) => {
   try {
-    const update = { ...req.body };
-    if (update.analysisText && typeof update.analysisText === "string") {
-      update.analysisText = sanitizeHtmlInput(update.analysisText);
-    }
-    const item = await PortfolioCertification.findByIdAndUpdate(req.params.id, update, { new: true });
+    const item = await PortfolioCertification.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json({ success: true, message: "Certification updated", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -2319,11 +2320,7 @@ app.get("/api/ns-control/skills", async (req, res) => {
 
 app.post("/api/ns-control/skills", auth, async (req, res) => {
   try {
-    const sanitized = { ...req.body };
-    if (sanitized.name && typeof sanitized.name === "string") {
-      sanitized.name = sanitizeHtmlInput(sanitized.name);
-    }
-    const item = await PortfolioSkill.create(sanitized);
+    const item = await PortfolioSkill.create(req.body);
     res.status(201).json({ success: true, message: "Skill saved", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -2332,11 +2329,7 @@ app.post("/api/ns-control/skills", auth, async (req, res) => {
 
 app.patch("/api/ns-control/skills/:id", auth, async (req, res) => {
   try {
-    const update = { ...req.body };
-    if (update.name && typeof update.name === "string") {
-      update.name = sanitizeHtmlInput(update.name);
-    }
-    const item = await PortfolioSkill.findByIdAndUpdate(req.params.id, update, { new: true });
+    const item = await PortfolioSkill.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json({ success: true, message: "Skill updated", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -2574,10 +2567,6 @@ ${question}
 async function sendDailyAdminReport() {
   if (process.env.DAILY_REPORT_ENABLED !== "true") return;
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD || !process.env.REPORT_EMAIL) return;
-  if (!process.env.RESEND_API_KEY) {
-    console.warn("[NS.ai] sendDailyAdminReport: RESEND_API_KEY is not set — skipping email dispatch.");
-    return;
-  }
 
   const totalVisitors = await Visitor.countDocuments();
   const totalMessages = await Message.countDocuments();
@@ -2641,7 +2630,7 @@ async function sendDailyAdminReport() {
   const topBrowser = topBrowsers?.[0]?._id || "Unknown";
   const topPage = topPages?.[0]?._id || "/";
 
-  const clean = escapeHtml;
+  const clean = (v) => String(v || "Unknown").replace(/[<>&]/g, "");
 
   const listRows = (items, icon) => items.map((x, i) => `
     <div style="padding:14px 0;border-bottom:1px solid rgba(148,163,184,.18)">
@@ -2686,7 +2675,7 @@ async function sendDailyAdminReport() {
             <div style="font-size:13px;color:#a7f3d0;font-weight:1000">EXECUTIVE SUMMARY</div>
             <p style="margin:10px 0 0;color:#e2e8f0;line-height:1.8;font-weight:700">
               NS.ai detected <b>${trafficLevel}</b> portfolio activity today. Visitor growth is <b>${visitorGrowth}%</b>,
-              top audience location is <b>${escapeHtml(topCity)}</b>, top browser is <b>${escapeHtml(topBrowser)}</b>, and security threat level is <b>${escapeHtml(threatLevel)}</b>.
+              top audience location is <b>${topCity}</b>, top browser is <b>${topBrowser}</b>, and security threat level is <b>${threatLevel}</b>.
             </p>
           </div>
 
@@ -2731,8 +2720,8 @@ async function sendDailyAdminReport() {
             <li>Follow up recent contact leads within 24 hours.</li>
             <li>Create more cybersecurity project content to improve engagement.</li>
             <li>Monitor failed login activity and suspicious IP patterns.</li>
-            <li>Optimize top page <b>${escapeHtml(topPage)}</b> for better conversions.</li>
-            <li>Keep tracking visitors from <b>${escapeHtml(topCity)}</b> audience segment.</li>
+            <li>Optimize top page <b>${topPage}</b> for better conversions.</li>
+            <li>Keep tracking visitors from <b>${topCity}</b> audience segment.</li>
           </ul>
         </div>
       </div>
@@ -2758,7 +2747,7 @@ async function sendDailyAdminReport() {
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
           <div style="background:#020617;border-radius:18px;padding:16px"><b>Failed Logins</b><br/><span style="font-size:30px;font-weight:1000;color:white">${failedLoginCount}</span></div>
           <div style="background:#020617;border-radius:18px;padding:16px"><b>Security Score</b><br/><span style="font-size:30px;font-weight:1000;color:#86efac">${securityScore}</span></div>
-          <div style="background:#020617;border-radius:18px;padding:16px"><b>Threat</b><br/><span style="font-size:30px;font-weight:1000;color:#fbbf24">${escapeHtml(threatLevel)}</span></div>
+          <div style="background:#020617;border-radius:18px;padding:16px"><b>Threat</b><br/><span style="font-size:30px;font-weight:1000;color:#fbbf24">${threatLevel}</span></div>
           <div style="background:#020617;border-radius:18px;padding:16px"><b>Backend</b><br/><span style="font-size:24px;font-weight:1000;color:#86efac">ONLINE</span></div>
         </div>
       </div>
@@ -2824,15 +2813,6 @@ app.post("/api/ns-ai", async (req, res) => {
       return res.status(400).json({ success: false, reply: "Message is required." });
     }
 
-    // FIX: genAI is null when GEMINI_API_KEY is not set — guard before calling getGenerativeModel
-    if (!genAI) {
-      console.warn("⚠️  NS.ai: GEMINI_API_KEY not set. /api/ns-ai is unavailable.");
-      return res.status(503).json({
-        success: false,
-        reply: "NS.ai is not configured. Please set GEMINI_API_KEY in environment variables."
-      });
-    }
-
     const model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash",
       systemInstruction: `You are NS.ai, a professional and friendly AI portfolio assistant developed by Naitik Soni.
@@ -2863,52 +2843,12 @@ Rules:
       reply
     });
   } catch (error) {
-    console.error("NS.ai Error:", error.message);
+    console.error("NS.ai Error:", error);
     res.status(500).json({
       success: false,
       reply: "NS.ai is temporarily unavailable. Please try again later."
     });
   }
 });
-
-function validateJwtSecret() {
-  const secret = process.env.JWT_SECRET;
-
-  if (!secret) {
-    console.error("❌ FATAL: JWT_SECRET is missing from environment variables.");
-    console.error("   Set JWT_SECRET in your .env file or environment.");
-    process.exit(1);
-  }
-
-  if (secret.trim().length === 0) {
-    console.error("❌ FATAL: JWT_SECRET is empty.");
-    console.error("   Set a non-empty value in your .env file.");
-    process.exit(1);
-  }
-
-  const placeholders = [
-    "change-me", "change_me", "changeme",
-    "password", "secret", "jwt-secret",
-    "your-secret", "your_secret", "yoursecret",
-    "123456", "admin", "test",
-    "placeholder", "todo", "fixme",
-  ];
-
-  if (placeholders.includes(secret.toLowerCase().trim())) {
-    console.error(`❌ FATAL: JWT_SECRET contains a placeholder value: "${secret}".`);
-    console.error("   Replace it with a strong, random secret.");
-    process.exit(1);
-  }
-
-  if (secret.trim().length < 16) {
-    console.error(`❌ FATAL: JWT_SECRET is too short (${secret.trim().length} chars). Minimum is 16.`);
-    console.error("   Use a longer, randomly generated secret.");
-    process.exit(1);
-  }
-
-  console.log("✅ JWT_SECRET validated.");
-}
-
-validateJwtSecret();
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
