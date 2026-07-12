@@ -450,11 +450,22 @@ function suspendedResponse(res, ip, reason = "Suspicious activity detected") {
 
 async function socMiddleware(req, res, next) {
   const ip = getClientIp(req);
+  console.log("\n========== DEV DEBUG ==========");
+console.log("IP        :", ip);
+console.log("Origin    :", req.headers.origin);
+console.log("Referer   :", req.headers.referer);
+console.log("Host      :", req.headers.host);
+console.log("Dev Mode? :", isDevelopmentOrigin(req));
+console.log("===============================\n");
   const now = Date.now();
   const windowMs = 30 * 1000;
   const blockMs = SOC_BLOCK_MS;
 
   if (isAdminProtectedIp(ip)) {
+    return next();
+  }
+
+  if (isDevelopmentOrigin(req)) {
     return next();
   }
 
@@ -578,6 +589,13 @@ function getClientIp(req) {
   return cleanIp(forwardedIp || req.clientIp || req.ip);
 }
 
+function isDevelopmentOrigin(req) {
+  const origin = req.headers.origin || "";
+  const referer = req.headers.referer || "";
+  return origin.includes("localhost") || origin.includes("127.0.0.1") ||
+         referer.includes("localhost") || referer.includes("127.0.0.1");
+}
+
 function isBlocked(ip) {
   const item = loginAttempts.get(ip);
   if (!item?.blockedUntil) return false;
@@ -641,6 +659,9 @@ async function blockGuard(req, res, next) {
 
     // FIX: Admin IPs in ADMIN_SAFE_IPS are never blocked by the firewall.
     if (isAdminProtectedIp(ip)) return next();
+
+    // FIX: Localhost development requests bypass the block check entirely.
+    if (isDevelopmentOrigin(req)) return next();
 
     // FIX: Authenticated admin sessions (valid JWT) bypass the block check.
     // This ensures an admin can never be locked out of their own panel.
