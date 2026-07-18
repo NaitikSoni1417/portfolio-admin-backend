@@ -41,7 +41,9 @@ app.set("trust proxy", true);
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "X-Public-IP"],
+  exposedHeaders: ["Content-Disposition"]
 }));
 
 app.use(express.json());
@@ -706,60 +708,139 @@ function auth(req, res, next) {
 }
 
 function cleanIp(ip = "") {
-  return ip.replace("::ffff:", "").replace("::1", "127.0.0.1");
+  if (!ip) return "";
+  // Strip IPv4-mapped IPv6 prefix (e.g. ::ffff:1.2.3.4 → 1.2.3.4)
+  ip = ip.replace(/^::ffff:/i, "").trim();
+  // Normalize IPv6 loopback
+  if (ip === "::1") return "127.0.0.1";
+  return ip;
 }
 
+function isPrivateIp(ip) {
+  if (!ip) return true;
+  if (ip === "127.0.0.1" || ip === "localhost" || ip === "::1") return true;
+  // RFC1918 private ranges
+  if (/^10\./.test(ip)) return true;
+  if (/^192\.168\./.test(ip)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  // Carrier-grade NAT
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip)) return true;
+  // Link-local
+  if (/^169\.254\./.test(ip)) return true;
+  return false;
+}
+
+// ─── Unified, robust geolocation function ───────────────────────────────────
+// Single source of truth — replaces the old getGeo() and lookupIpGeo().
+// Priority: ip-api.com (45/min free) → ipwho.is → ipapi.co
+// All fetches have a 4-second timeout so cold-start latency can't hang a route.
 async function getGeo(ip) {
-  if (!ip || ip === "127.0.0.1" || ip === "localhost") {
-    return {
-      city: "Vadodara",
-      region: "Gujarat",
-      country: "India",
-      isp: "Localhost",
-      lat: 22.3072,
-      lng: 73.1812
-    };
-  }
-
-  try {
-    const r = await fetch(`https://ipwho.is/${ip}`);
-    const d = await r.json();
-    if (d.success !== false) {
-      return {
-        city: d.city || d.region || "Unknown",
-        region: d.region || "Unknown",
-        country: d.country || "Unknown",
-        isp: d.connection?.isp || d.connection?.org || "Unknown",
-        lat: d.latitude || 22.3072,
-        lng: d.longitude || 73.1812
-      };
-    }
-  } catch { }
-
-  try {
-    const r = await fetch(`https://ipapi.co/${ip}/json/`);
-    const d = await r.json();
-    if (!d.error) {
-      return {
-        city: d.city || "Unknown",
-        region: d.region || "Unknown",
-        country: d.country_name || d.country || "Unknown",
-        isp: d.org || d.network || "Unknown",
-        lat: d.latitude || 22.3072,
-        lng: d.longitude || 73.1812
-      };
-    }
-  } catch { }
-
-  return {
+  const fallback = {
     city: "Unknown",
     region: "Unknown",
     country: "Unknown",
     isp: "Unknown",
-    lat: 22.3072,
-    lng: 73.1812
+    lat: null,
+    lng: null
   };
+
+  // Localhost / dev mode
+  if (!ip || ip === "127.0.0.1" || ip === "localhost") {
+    return { city: "Vadodara", region: "Gujarat", country: "India", isp: "Localhost", lat: 22.3072, lng: 73.1812 };
+  }
+
+  // Any private/internal IP (Render container IPs, Docker, etc.) → return fallback
+  // Don't waste an API call on a private address — it will always fail.
+  if (isPrivateIp(ip)) {
+    console.warn(`[GEO] Private/internal IP detected: ${ip} — skipping geo lookup`);
+    return fallback;
+  }
+
+  // Helper: fetch with timeout
+  async function fetchWithTimeout(url, ms = 4000) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      return res;
+    } catch (e) {
+      clearTimeout(timer);
+      throw e;
+    }
+  }
+
+  // ── 1. ip-api.com (primary — reliable, no key, 45 req/min free) ──────────
+  try {
+    const r = await fetchWithTimeout(
+      `http://ip-api.com/json/${ip}?fields=status,message,city,regionName,country,isp,org,lat,lon`,
+      4000
+    );
+    if (r.ok) {
+      const d = await r.json();
+      if (d.status === "success") {
+        return {
+          city: d.city || "Unknown",
+          region: d.regionName || "Unknown",
+          country: d.country || "Unknown",
+          isp: d.isp || d.org || "Unknown",
+          lat: d.lat || null,
+          lng: d.lon || null
+        };
+      }
+      console.warn(`[GEO] ip-api.com returned non-success for ${ip}: ${d.message}`);
+    }
+  } catch (e) {
+    console.warn(`[GEO] ip-api.com failed for ${ip}: ${e.message}`);
+  }
+
+  // ── 2. ipwho.is (fallback) ────────────────────────────────────────────────
+  try {
+    const r = await fetchWithTimeout(`https://ipwho.is/${ip}`, 4000);
+    if (r.ok) {
+      const d = await r.json();
+      // Check d.success === true explicitly — undefined !== true
+      if (d.success === true && d.city) {
+        return {
+          city: d.city || "Unknown",
+          region: d.region || "Unknown",
+          country: d.country || "Unknown",
+          isp: d.connection?.isp || d.connection?.org || "Unknown",
+          lat: d.latitude || null,
+          lng: d.longitude || null
+        };
+      }
+    }
+  } catch (e) {
+    console.warn(`[GEO] ipwho.is failed for ${ip}: ${e.message}`);
+  }
+
+  // ── 3. ipapi.co (last resort) ─────────────────────────────────────────────
+  try {
+    const r = await fetchWithTimeout(`https://ipapi.co/${ip}/json/`, 4000);
+    if (r.ok) {
+      const d = await r.json();
+      if (!d.error && d.city) {
+        return {
+          city: d.city || "Unknown",
+          region: d.region || "Unknown",
+          country: d.country_name || d.country || "Unknown",
+          isp: d.org || d.network || "Unknown",
+          lat: d.latitude || null,
+          lng: d.longitude || null
+        };
+      }
+    }
+  } catch (e) {
+    console.warn(`[GEO] ipapi.co failed for ${ip}: ${e.message}`);
+  }
+
+  return fallback;
 }
+// Alias for backward compat — both names now point to the same function.
+const lookupIpGeo = getGeo;
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 
 const OWNER_PROFILE = `
@@ -780,8 +861,9 @@ app.post("/api/music/play", async (req, res) => {
     if (!track) return res.status(404).json({ error: "Track not found" });
 
     const userAgent = req.body.userAgent || req.headers["user-agent"] || "";
-    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
+    const bodyPublicIp = req.body.publicIp ? cleanIp(req.body.publicIp) : null;
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
+    const ip = bodyPublicIp || cleanIp(forwardedIp || req.clientIp || req.ip);
     const geo = await getGeo(ip);
 
     const parser = new UAParser(userAgent);
@@ -1006,12 +1088,18 @@ app.get("/api/test-suspended-page", (req, res) => {
 
 app.post("/api/track", async (req, res) => {
   try {
-    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const rawIp = forwardedIp || req.clientIp || req.ip;
+    // FIX (Bug #1): The frontend sends the real public IP as req.body.publicIp
+    // (fetched client-side from api.ipify.org). Prefer that over server-side
+    // proxy headers which may contain Render's internal IPs.
+    const bodyPublicIp = req.body.publicIp ? cleanIp(req.body.publicIp) : null;
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
+    const rawIp = bodyPublicIp || cleanIp(forwardedIp || "") || cleanIp(req.clientIp || "") || cleanIp(req.ip || "");
     const ip = cleanIp(rawIp);
 
-    let geo = await lookupIpGeo(ip);
-    let geoProvider = geo.country !== "Unknown" ? "lookupIpGeo" : "none";
+    // Only call geo API with a real public IP
+    let geo = await getGeo(ip);
+    let geoProvider = geo.country !== "Unknown" ? "ip-api.com" : "none";
+
 
     const uaString = req.body.userAgent || req.headers["user-agent"] || "";
     const parser = new UAParser(uaString);
@@ -1057,59 +1145,7 @@ app.post("/api/track", async (req, res) => {
 });
 
 
-async function lookupIpGeo(ip) {
-  const fallback = {
-    city: "Unknown",
-    region: "Unknown",
-    country: "Unknown",
-    isp: "Unknown",
-    lat: null,
-    lng: null
-  };
 
-  if (!ip || ip === "127.0.0.1" || ip === "localhost") {
-    return {
-      city: "Vadodara",
-      region: "Gujarat",
-      country: "India",
-      isp: "Localhost",
-      lat: 22.3072,
-      lng: 73.1812
-    };
-  }
-
-  try {
-    const r = await fetch(`https://ipwho.is/${ip}`);
-    const d = await r.json();
-    if (d.success !== false) {
-      return {
-        city: d.city || d.region || "Unknown",
-        region: d.region || "Unknown",
-        country: d.country || "Unknown",
-        isp: d.connection?.isp || d.connection?.org || "Unknown",
-        lat: d.latitude || null,
-        lng: d.longitude || null
-      };
-    }
-  } catch { }
-
-  try {
-    const r = await fetch(`https://ipapi.co/${ip}/json/`);
-    const d = await r.json();
-    if (!d.error) {
-      return {
-        city: d.city || "Unknown",
-        region: d.region || "Unknown",
-        country: d.country_name || d.country || "Unknown",
-        isp: d.org || d.network || "Unknown",
-        lat: d.latitude || null,
-        lng: d.longitude || null
-      };
-    }
-  } catch { }
-
-  return fallback;
-}
 
 async function getSecurityContext(req, ip, key = "") {
   const geo = await lookupIpGeo(ip);
@@ -1277,8 +1313,11 @@ app.post("/api/admin/login", async (req, res) => {
 
 app.post("/api/contact", async (req, res) => {
   try {
-    const ip = getClientIp(req);
+    // FIX: Prefer publicIp sent by frontend (real visitor IP from api.ipify.org)
+    const bodyPublicIp = req.body.publicIp ? cleanIp(req.body.publicIp) : null;
+    const ip = bodyPublicIp || getClientIp(req);
     const geo = await getGeo(ip);
+
 
     const ua = req.headers["user-agent"] || req.body.userAgent || "";
     const parser = new UAParser(ua);
@@ -1320,8 +1359,10 @@ app.post("/api/contact", async (req, res) => {
 app.post("/api/resume-download", async (req, res) => {
   try {
     const userAgent = req.body.userAgent || req.headers["user-agent"] || "";
-    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
+    // FIX: Prefer publicIp sent by the frontend (real visitor IP from api.ipify.org)
+    const bodyPublicIp = req.body.publicIp ? cleanIp(req.body.publicIp) : null;
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
+    const ip = bodyPublicIp || cleanIp(forwardedIp || req.clientIp || req.ip);
     const geo = await getGeo(ip);
 
     const parser = new UAParser(userAgent);
@@ -1331,10 +1372,12 @@ app.post("/api/resume-download", async (req, res) => {
       ip,
       publicIp: ip,
       page: req.body.page || "/",
-      city: geo.city,
-      region: geo.region,
-      country: geo.country,
-      isp: geo.isp,
+      city: geo.city || "Unknown",
+      region: geo.region || "Unknown",
+      country: geo.country || "Unknown",
+      isp: geo.isp || "Unknown",
+      lat: geo.lat || null,
+      lng: geo.lng || null,
       browser: ua.browser?.name || "Unknown",
       os: ua.os?.name || "Unknown",
       device: ua.device?.type || "Desktop",
@@ -1346,6 +1389,7 @@ app.post("/api/resume-download", async (req, res) => {
     res.status(500).json({ error: "Resume download tracking failed" });
   }
 });
+
 
 app.get("/api/admin/resume-downloads", auth, async (req, res) => {
   try {
@@ -2152,9 +2196,17 @@ app.get("/api/ns-control/resume-download", async (req, res) => {
     const file = await ResumeFile.findOne().sort({ createdAt: -1 });
     if (!file) return res.status(404).send("Resume not found");
 
-    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0];
-    const ip = cleanIp(forwardedIp || req.clientIp || req.ip);
-    const geo = await lookupIpGeo(ip);
+    // FIX: Frontend sends real visitor IP in X-Public-IP header (from api.ipify.org).
+    // Prefer that over x-forwarded-for which is Render's internal proxy IP.
+    const xPublicIp = req.headers["x-public-ip"] ? cleanIp(req.headers["x-public-ip"]) : null;
+    const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
+    const ip = xPublicIp || cleanIp(forwardedIp || req.clientIp || req.ip);
+    const geo = await getGeo(ip);
+
+    // Allow the frontend to fetch this as a blob (needed for proper tracking)
+    res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "*");
+    res.setHeader("Access-Control-Allow-Headers", "X-Public-IP");
+
 
     const uaString = req.headers["user-agent"] || "";
     const parser = new UAParser(uaString);
