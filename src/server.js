@@ -2577,56 +2577,81 @@ ${question}
     let answer = "";
 
     if (process.env.OPENROUTER_API_KEY) {
-      const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://naitiksoni1417.netlify.app",
-          "X-Title": "NS.ai Admin Agent"
-        },
-        body: JSON.stringify({
-          model: process.env.NSAI_MODEL || "openai/gpt-4o",
-          messages: [
-            { role: "system", content: "You are NS.ai Pro, Naitik Soni’s private executive admin analyst. Start in professional English, then match the user’s language after their message." },
-            { role: "user", content: prompt }
-          ],
-          temperature: 0.25,
-          max_tokens: 550
-        })
-      });
+      try {
+        const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://naitiksoni1417.netlify.app",
+            "X-Title": "NS.ai Admin Agent"
+          },
+          body: JSON.stringify({
+            model: process.env.NSAI_MODEL || "openai/gpt-4o",
+            messages: [
+              { role: "system", content: "You are NS.ai Pro, Naitik Soni's private executive admin analyst. Start in professional English, then match the user's language after their message." },
+              { role: "user", content: prompt }
+            ],
+            temperature: 0.25,
+            max_tokens: 550
+          })
+        });
 
-      const aiData = await aiRes.json();
+        const aiData = await aiRes.json();
 
-      if (!aiRes.ok) {
-        console.error("OpenRouter error:", JSON.stringify(aiData, null, 2));
-        const fallback = `NS.ai Pro provider limit reached. Live summary: today views ${dashboard?.todayViews || 0}, total visitors ${dashboard?.totalVisitors || 0}, active sessions ${dashboard?.activeSessions || 0}, total messages ${dashboard?.totalMessages || 0}, failed login events ${security?.failedLoginCount || 0}. Recommended next action: check API provider limits and review backend logs.`;
-        return res.json({ answer: fallback, fallback: true });
+        if (!aiRes.ok) {
+          console.error("OpenRouter API error:", aiRes.status, JSON.stringify(aiData).slice(0, 500));
+        } else {
+          answer = aiData?.choices?.[0]?.message?.content || "";
+        }
+      } catch (e) {
+        console.error("OpenRouter fetch failed:", e.message);
       }
-
-      answer = aiData?.choices?.[0]?.message?.content || "";
     }
 
     if (!answer && process.env.GEMINI_API_KEY) {
-      const aiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-2.0-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
-          })
-        }
-      );
+      try {
+        const aiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-2.0-flash"}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          }
+        );
 
-      const aiData = await aiRes.json();
-      answer = aiData?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\\n") || "";
+        const aiData = await aiRes.json();
+        if (!aiRes.ok) {
+          console.error("Gemini API error:", aiRes.status, JSON.stringify(aiData).slice(0, 500));
+        } else {
+          answer = aiData?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("\n") || "";
+        }
+      } catch (e) {
+        console.error("Gemini fetch failed:", e.message);
+      }
     }
 
     if (!answer) {
-      return res.status(500).json({
-        error: "No AI provider available. Add OPENROUTER_API_KEY or valid GEMINI_API_KEY."
-      });
+      const d = dashboard || {};
+      const s = security || {};
+      const q = (question || "").toLowerCase();
+      let fb = "";
+
+      if (q.includes("visitor") || q.includes("traffic") || q.includes("overview") || q.includes("summary")) {
+        fb = `**NS.ai Pro — Executive Summary**\n\n**Today's Performance:**\n- Views today: ${d.todayViews || 0}\n- Total visitors: ${d.totalVisitors || 0}\n- Active sessions: ${d.activeSessions || 0}\n- Messages: ${d.totalMessages || 0} (${d.unreadMessages || 0} unread)\n\n**Top Countries:** ${(d.countries || []).slice(0, 5).map((c) => c._id || c.country).join(", ") || "No data yet"}\n\n**Top Pages:** ${(d.topPages || []).slice(0, 5).map((p) => p._id || p.page).join(", ") || "No data yet"}\n\n**Devices:** ${(d.devices || []).slice(0, 3).map((d) => d._id || d.device).join(", ") || "No data yet"}\n\n**Recommended Actions:**\n1. Review top-performing pages and optimize CTAs\n2. Check security logs for suspicious activity\n3. Follow up on unread messages`;
+      } else if (q.includes("security") || q.includes("login") || q.includes("blocked") || q.includes("audit")) {
+        fb = `**NS.ai Pro — Security Audit**\n\n**Security Status:**\n- Failed login attempts: ${s.failedLoginCount || 0}\n- Blocked IPs: ${(s.blockedIps || []).length}\n- Suspicious IPs: ${(s.suspiciousIps || []).length}\n\n**Recent Security Logs:**\n${(s.logs || []).slice(0, 5).map((l) => `- ${l.action}: ${l.ip || "Unknown"} — ${l.reason || "No reason"} (${l.createdAt ? new Date(l.createdAt).toLocaleString() : ""})`).join("\n") || "No recent security events"}\n\n**Recommended Actions:**\n1. Review blocked IPs and unblock if necessary\n2. Monitor suspicious IP patterns\n3. Check for brute-force attempts`;
+      } else if (q.includes("message") || q.includes("contact")) {
+        fb = `**NS.ai Pro — Messages Summary**\n\n- Total messages: ${d.totalMessages || 0}\n- Unread: ${d.unreadMessages || 0}\n\n${(d.messages || []).slice(0, 3).map((m) => `**${m.name || "Unknown"}** (${m.email || "No email"}):\n"${(m.message || "").slice(0, 120)}"\nStatus: ${m.status || "Unknown"} — ${m.city || ""}, ${m.country || ""}`).join("\n\n") || "No messages yet"}\n\n**Recommended Actions:**\n1. Reply to unread messages promptly\n2. Follow up on important inquiries`;
+      } else if (q.includes("chart") || q.includes("graph") || q.includes("traffic")) {
+        fb = `**NS.ai Pro — Traffic Analysis**\n\n**Daily Views (last 7 days):**\n${(d.dailyViews || []).slice(-7).map((v) => `- ${v.date || v._id}: ${v.views || 0} views`).join("\n") || "No chart data available"}\n\n**Traffic Sources:**\n- Top browser: ${(d.browsers || [])[0]?._id || "Unknown"}\n- Top OS: ${(d.osStats || [])[0]?._id || "Unknown"}\n- Top device: ${(d.devices || [])[0]?._id || "Unknown"}`;
+      } else {
+        fb = `**NS.ai Pro — Dashboard Overview**\n\n**Key Metrics:**\n- Today Views: ${d.todayViews || 0}\n- Total Visitors: ${d.totalVisitors || 0}\n- Active Sessions: ${d.activeSessions || 0}\n- Messages: ${d.totalMessages || 0}\n- Failed Logins: ${s.failedLoginCount || 0}\n- Blocked IPs: ${(s.blockedIps || []).length}\n\n**Top Countries:** ${(d.countries || []).slice(0, 3).map((c) => c._id || c.country).join(", ") || "No data yet"}\n\n*NS.ai Pro is running in summary mode. For full AI-powered analysis, configure OPENROUTER_API_KEY or GEMINI_API_KEY on Render.*`;
+      }
+
+      answer = fb;
     }
 
     res.json({ answer });
