@@ -70,6 +70,7 @@ const visitorSchema = new mongoose.Schema({
   city: String,
   region: String,
   country: String,
+  countryCode: { type: String, default: "" },
   isp: String,
   lat: Number,
   lng: Number,
@@ -86,6 +87,7 @@ const messageSchema = new mongoose.Schema({
   city: String,
   region: String,
   country: String,
+  countryCode: { type: String, default: "" },
   isp: String,
   lat: Number,
   lng: Number,
@@ -121,6 +123,7 @@ const resumeDownloadSchema = new mongoose.Schema({
   city: String,
   region: String,
   country: String,
+  countryCode: { type: String, default: "" },
   isp: String,
   browser: String,
   os: String,
@@ -142,6 +145,7 @@ const securityLogSchema = new mongoose.Schema({
   city: String,
   region: String,
   country: String,
+  countryCode: { type: String, default: "" },
   isp: String,
   lat: Number,
   lng: Number,
@@ -181,6 +185,7 @@ const musicPlaySchema = new mongoose.Schema({
   ip: String,
   city: String,
   country: String,
+  countryCode: { type: String, default: "" },
   browser: String,
   os: String,
   device: String,
@@ -739,6 +744,7 @@ async function getGeo(ip) {
     city: "Unknown",
     region: "Unknown",
     country: "Unknown",
+    countryCode: "",
     isp: "Unknown",
     lat: null,
     lng: null
@@ -746,7 +752,7 @@ async function getGeo(ip) {
 
   // Localhost / dev mode
   if (!ip || ip === "127.0.0.1" || ip === "localhost") {
-    return { city: "Vadodara", region: "Gujarat", country: "India", isp: "Localhost", lat: 22.3072, lng: 73.1812 };
+    return { city: "Vadodara", region: "Gujarat", country: "India", countryCode: "IN", isp: "Localhost", lat: 22.3072, lng: 73.1812 };
   }
 
   // Any private/internal IP (Render container IPs, Docker, etc.) → return fallback
@@ -773,7 +779,7 @@ async function getGeo(ip) {
   // ── 1. ip-api.com (primary — reliable, no key, 45 req/min free) ──────────
   try {
     const r = await fetchWithTimeout(
-      `http://ip-api.com/json/${ip}?fields=status,message,city,regionName,country,isp,org,lat,lon`,
+      `http://ip-api.com/json/${ip}?fields=status,message,city,regionName,country,countryCode,isp,org,lat,lon`,
       4000
     );
     if (r.ok) {
@@ -783,6 +789,7 @@ async function getGeo(ip) {
           city: d.city || "Unknown",
           region: d.regionName || "Unknown",
           country: d.country || "Unknown",
+          countryCode: d.countryCode || "",
           isp: d.isp || d.org || "Unknown",
           lat: d.lat || null,
           lng: d.lon || null
@@ -805,6 +812,7 @@ async function getGeo(ip) {
           city: d.city || "Unknown",
           region: d.region || "Unknown",
           country: d.country || "Unknown",
+          countryCode: d.country_code || "",
           isp: d.connection?.isp || d.connection?.org || "Unknown",
           lat: d.latitude || null,
           lng: d.longitude || null
@@ -825,6 +833,7 @@ async function getGeo(ip) {
           city: d.city || "Unknown",
           region: d.region || "Unknown",
           country: d.country_name || d.country || "Unknown",
+          countryCode: d.country_code || "",
           isp: d.org || d.network || "Unknown",
           lat: d.latitude || null,
           lng: d.longitude || null
@@ -875,6 +884,7 @@ app.post("/api/music/play", async (req, res) => {
       ip,
       city: geo.city,
       country: geo.country,
+      countryCode: geo.countryCode || "",
       browser: ua.browser?.name || "Unknown",
       os: ua.os?.name || "Unknown",
       device: ua.device?.type || "Desktop",
@@ -1127,6 +1137,7 @@ app.post("/api/track", async (req, res) => {
       city: req.body.city || geo.city || "Unknown",
       region: req.body.region || geo.region || "Unknown",
       country: req.body.country || geo.country || "Unknown",
+      countryCode: geo.countryCode || "",
       isp: req.body.isp || geo.isp || "Unknown",
       lat: req.body.lat || geo.lat || null,
       lng: req.body.lng || geo.lng || null,
@@ -1176,6 +1187,7 @@ async function getSecurityContext(req, ip, key = "") {
     city: geo.city || "Unknown",
     region: geo.region || "Unknown",
     country: geo.country || "Unknown",
+    countryCode: geo.countryCode || "",
     isp: geo.isp || "Unknown",
     lat: geo.lat || null,
     lng: geo.lng || null,
@@ -1335,6 +1347,7 @@ app.post("/api/contact", async (req, res) => {
       city: geo.city || "Unknown",
       region: geo.region || "Unknown",
       country: geo.country || "Unknown",
+      countryCode: geo.countryCode || "",
       isp: geo.isp || "Unknown",
       lat: geo.lat || null,
       lng: geo.lng || null,
@@ -1375,6 +1388,7 @@ app.post("/api/resume-download", async (req, res) => {
       city: geo.city || "Unknown",
       region: geo.region || "Unknown",
       country: geo.country || "Unknown",
+      countryCode: geo.countryCode || "",
       isp: geo.isp || "Unknown",
       lat: geo.lat || null,
       lng: geo.lng || null,
@@ -2219,6 +2233,7 @@ app.get("/api/ns-control/resume-download", async (req, res) => {
       city: geo.city || "Unknown",
       region: geo.region || "Unknown",
       country: geo.country || "Unknown",
+      countryCode: geo.countryCode || "",
       isp: geo.isp || "Unknown",
       lat: geo.lat || null,
       lng: geo.lng || null,
