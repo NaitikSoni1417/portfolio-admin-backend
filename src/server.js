@@ -10,6 +10,7 @@ import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import helmet from "helmet";
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ const upload = multer({
 
 const app = express();
 app.set("trust proxy", true);
+app.use(helmet());
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -46,7 +48,7 @@ app.use(cors({
   exposedHeaders: ["Content-Disposition"]
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(requestIp.mw());
 
 mongoose.connect(process.env.MONGO_URI)
@@ -104,6 +106,8 @@ const messageSchema = new mongoose.Schema({
   referrer: String,
   userAgent: String,
   status: { type: String, default: "Unread" },
+  reply: String,
+  repliedAt: Date,
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -599,6 +603,7 @@ function getClientIp(req) {
 }
 
 function isDevelopmentOrigin(req) {
+  if (process.env.NODE_ENV === "production") return false;
   const origin = req.headers.origin || "";
   const referer = req.headers.referer || "";
   return origin.includes("localhost") || origin.includes("127.0.0.1") ||
@@ -1098,15 +1103,15 @@ app.get("/api/test-suspended-page", (req, res) => {
 
 app.post("/api/track", async (req, res) => {
   try {
-    // FIX (Bug #1): The frontend sends the real public IP as req.body.publicIp
-    // (fetched client-side from api.ipify.org). Prefer that over server-side
-    // proxy headers which may contain Render's internal IPs.
     const bodyPublicIp = req.body.publicIp ? cleanIp(req.body.publicIp) : null;
     const forwardedIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
     const rawIp = bodyPublicIp || cleanIp(forwardedIp || "") || cleanIp(req.clientIp || "") || cleanIp(req.ip || "");
     const ip = cleanIp(rawIp);
 
-    // Only call geo API with a real public IP
+    if (!rateLimitCheck(trackRateLimit, ip, 1 * 60 * 1000, 30)) {
+      return res.status(429).json({ success: false, error: "Rate limited" });
+    }
+
     let geo = await getGeo(ip);
     let geoProvider = geo.country !== "Unknown" ? "ip-api.com" : "none";
 
@@ -1129,7 +1134,7 @@ app.post("/api/track", async (req, res) => {
       page: req.body.page || "/",
       sessionId: req.body.sessionId || "",
       sessionDuration: req.body.sessionDuration || 0,
-      pagesViewed: req.body.pagesViewed || [],
+      pagesViewed: (req.body.pagesViewed || []).slice(0, 50),
       screen: req.body.screen || "",
       language: req.body.language || "",
       timezone: req.body.timezone || "",
@@ -1325,9 +1330,13 @@ app.post("/api/admin/login", async (req, res) => {
 
 app.post("/api/contact", async (req, res) => {
   try {
-    // FIX: Prefer publicIp sent by frontend (real visitor IP from api.ipify.org)
     const bodyPublicIp = req.body.publicIp ? cleanIp(req.body.publicIp) : null;
     const ip = bodyPublicIp || getClientIp(req);
+
+    if (!rateLimitCheck(contactRateLimit, ip, 5 * 60 * 1000, 10)) {
+      return res.status(429).json({ success: false, error: "Too many messages. Please wait." });
+    }
+
     const geo = await getGeo(ip);
 
 
@@ -1438,40 +1447,119 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
     const totalMessages = await Message.countDocuments();
     const unreadMessages = await Message.countDocuments({ status: "Unread" });
 
-    // India timezone based today start
+    // India timezone today start (midnight IST)
     const now = new Date();
     const indiaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
     indiaNow.setHours(0, 0, 0, 0);
 
-    // Convert India midnight back to UTC for MongoDB Date comparison
     const todayStart = new Date(indiaNow.getTime() - 5.5 * 60 * 60 * 1000);
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
 
+    // 1. TODAY VIEWS & TREND (Today vs Yesterday)
+    const todayViews = await Visitor.countDocuments({ createdAt: { $gte: todayStart } });
+    const yesterdayViews = await Visitor.countDocuments({ createdAt: { $gte: yesterdayStart, $lt: todayStart } });
+    const todayViewsTrend = yesterdayViews > 0 
+      ? Number((((todayViews - yesterdayViews) / yesterdayViews) * 100).toFixed(1))
+      : (todayViews > 0 ? 100 : null);
+
+    // 2. ACTIVE SESSIONS & TREND (Last 30m vs 30m-60m ago)
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const sixtyMinAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const activeSessions = await Visitor.countDocuments({ createdAt: { $gte: thirtyMinAgo } });
+    const prevActiveSessions = await Visitor.countDocuments({ createdAt: { $gte: sixtyMinAgo, $lt: thirtyMinAgo } });
+    const activeSessionsTrend = prevActiveSessions > 0
+      ? Number((((activeSessions - prevActiveSessions) / prevActiveSessions) * 100).toFixed(1))
+      : (activeSessions > 0 ? 100 : null);
+
+    // 3. TOTAL VISITORS TREND (Last 7 days vs previous 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
-    // FIX: Real active sessions = visitors tracked in last 30 minutes (was fake random 1-10)
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
-    const activeSessions = await Visitor.countDocuments({ createdAt: { $gte: thirtyMinAgo } });
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
+    fourteenDaysAgo.setHours(0, 0, 0, 0);
 
-    const todayViews = await Visitor.countDocuments({ createdAt: { $gte: todayStart } });
+    const currentWeekVisitors = await Visitor.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
+    const prevWeekVisitors = await Visitor.countDocuments({ createdAt: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } });
+    const totalVisitorsTrend = prevWeekVisitors > 0
+      ? Number((((currentWeekVisitors - prevWeekVisitors) / prevWeekVisitors) * 100).toFixed(1))
+      : (currentWeekVisitors > 0 ? 100 : null);
+
+    // 4. MESSAGES TREND (Messages today vs yesterday)
+    const todayMessages = await Message.countDocuments({ createdAt: { $gte: todayStart } });
+    const yesterdayMessages = await Message.countDocuments({ createdAt: { $gte: yesterdayStart, $lt: todayStart } });
+    const messagesTrend = yesterdayMessages > 0
+      ? Number((((todayMessages - yesterdayMessages) / yesterdayMessages) * 100).toFixed(1))
+      : (todayMessages > 0 ? 100 : null);
+
+    // 5. GUARANTEED 7-DAY DAILY VIEWS ARRAY (Filling missing days with 0)
+    const rawDailyViews = await Visitor.aggregate([
+      { $match: { createdAt: { $gte: sevenDaysAgo } } },
+      { $group: { _id: { $dateToString: { format: "%d/%m", date: "$createdAt" } }, views: { $sum: 1 } } }
+    ]);
+    const dailyMap = new Map(rawDailyViews.map(d => [d._id, d.views]));
+
+    const rawDailyMessages = await Message.aggregate([
+      { $match: { createdAt: { $gte: sevenDaysAgo } } },
+      { $group: { _id: { $dateToString: { format: "%d/%m", date: "$createdAt" } }, count: { $sum: 1 } } }
+    ]);
+    const messageMap = new Map(rawDailyMessages.map(m => [m._id, m.count]));
+
+    const dailyViews = [];
+    const sparklineTotalVisitors = [];
+    const sparklineTodayViews = [];
+    const sparklineMessages = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" }).replace(/\//g, "/");
+      const viewsCount = dailyMap.get(dayStr) || 0;
+      const msgCount = messageMap.get(dayStr) || 0;
+
+      dailyViews.push({ date: dayStr, views: viewsCount });
+      sparklineTotalVisitors.push(viewsCount);
+      sparklineTodayViews.push(viewsCount);
+      sparklineMessages.push(msgCount);
+    }
+
+    // Sparkline for active sessions over last 6 intervals (4h slots in 24h)
+    const rawActiveSlots = [];
+    for (let i = 5; i >= 0; i--) {
+      const slotStart = new Date(Date.now() - (i + 1) * 4 * 60 * 60 * 1000);
+      const slotEnd = new Date(Date.now() - i * 4 * 60 * 60 * 1000);
+      const slotCount = await Visitor.countDocuments({ createdAt: { $gte: slotStart, $lt: slotEnd } });
+      rawActiveSlots.push(slotCount);
+    }
+
     const recentVisitorsRaw = await Visitor.find().sort({ createdAt: -1 }).limit(50);
     const messages = await Message.find().sort({ createdAt: -1 }).limit(20);
 
-    const recentVisitors = await Promise.all(
-      recentVisitorsRaw.map(async (v) => {
-        const visits = await Visitor.countDocuments({ visitorId: v.visitorId || v.ip });
-        const obj = v.toObject();
-        obj.visits = visits;
-        obj.isReturning = visits > 1;
-        return obj;
-      })
-    );
+    const visitorIds = recentVisitorsRaw.map(v => v.visitorId || v.ip);
+    const visitCounts = await Visitor.aggregate([
+      { $match: { visitorId: { $in: visitorIds } } },
+      { $group: { _id: "$visitorId", visits: { $sum: 1 } } }
+    ]);
+    const visitCountMap = new Map(visitCounts.map(v => [v._id, v.visits]));
+
+    const recentVisitors = recentVisitorsRaw.map((v) => {
+      const visits = visitCountMap.get(v.visitorId || v.ip) || 1;
+      const obj = v.toObject();
+      obj.visits = visits;
+      obj.isReturning = visits > 1;
+      return obj;
+    });
 
     const topPages = await Visitor.aggregate([{ $group: { _id: "$page", count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 6 }]);
     const browsers = await Visitor.aggregate([{ $group: { _id: "$browser", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
-    const devices = await Visitor.aggregate([{ $group: { _id: "$device", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+    const rawDevices = await Visitor.aggregate([{ $group: { _id: "$device", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
     const osStats = await Visitor.aggregate([{ $group: { _id: "$os", count: { $sum: 1 } } }, { $sort: { count: -1 } }]);
+
+    const devices = rawDevices.map(d => ({
+      name: d._id || "Unknown",
+      value: d.count
+    }));
 
     const countries = await Visitor.aggregate([
       { $group: { _id: "$country", count: { $sum: 1 } } },
@@ -1485,11 +1573,22 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
       { $limit: 8 }
     ]);
 
-    const dailyViews = await Visitor.aggregate([
-      { $match: { createdAt: { $gte: sevenDaysAgo } } },
-      { $group: { _id: { $dateToString: { format: "%d/%m", date: "$createdAt" } }, views: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
-    ]);
+    const securityLogs = socEvents.slice(0, 50).map((e) => ({
+      ip: e.ip,
+      action: e.action,
+      reason: e.reason,
+      attemptedKey: e.attemptedKey,
+      location: e.location || "Unknown",
+      device: e.device || "Unknown",
+      attempts: e.attempts || 1,
+      severity: e.severity || "LOW",
+      createdAt: e.timestamp || new Date().toISOString()
+    }));
+
+    let resumeDownloads = [];
+    try {
+      resumeDownloads = await ResumeDownload.find().sort({ createdAt: -1 }).limit(50).lean();
+    } catch {}
 
     res.json({
       totalVisitors,
@@ -1497,6 +1596,18 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
       activeSessions,
       totalMessages,
       unreadMessages,
+      trends: {
+        totalVisitors: totalVisitorsTrend,
+        todayViews: todayViewsTrend,
+        activeSessions: activeSessionsTrend,
+        messages: messagesTrend
+      },
+      sparklines: {
+        totalVisitors: sparklineTotalVisitors,
+        todayViews: sparklineTodayViews,
+        activeSessions: rawActiveSlots,
+        messages: sparklineMessages
+      },
       recentVisitors,
       messages,
       topPages,
@@ -1505,11 +1616,13 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
       osStats,
       countries,
       cities,
-      dailyViews
+      dailyViews,
+      securityLogs,
+      resumeDownloads
     });
   } catch (err) {
     console.error("Dashboard error:", err.message);
-    res.status(500).json({ error: "Dashboard data fetch failed", details: err.message });
+    res.status(500).json({ error: "Dashboard data fetch failed" });
   }
 });
 
@@ -1594,7 +1707,7 @@ app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
     res.json({ success: true, message: "Reply sent successfully" });
   } catch (err) {
     console.error("Reply email failed:", err);
-    res.status(500).json({ error: "Reply email failed", details: err.message });
+    res.status(500).json({ error: "Reply email failed" });
   }
 });
 
@@ -1700,7 +1813,9 @@ app.patch("/api/admin/command-center", auth, async (req, res) => {
 app.get("/api/admin/settings", auth, async (req, res) => {
   let setting = await Setting.findOne();
   if (!setting) setting = await Setting.create({});
-  res.json(setting);
+  const obj = setting.toObject();
+  delete obj.adminKey;
+  res.json(obj);
 });
 
 app.patch("/api/admin/settings", auth, async (req, res) => {
@@ -2136,7 +2251,7 @@ app.post("/api/ns-control/upload-image", auth, imageUpload.single("image"), asyn
     const result = await uploadImageToCloudinary(req.file.buffer, req.file.originalname);
     res.json({ success: true, imageUrl: result.secure_url, publicId: result.public_id });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2201,7 +2316,7 @@ app.post("/api/ns-control/upload-resume", auth, resumeUpload.single("resume"), a
       resumeUrl: "/api/ns-control/resume-download"
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2260,7 +2375,7 @@ app.get("/api/ns-control/content", async (req, res) => {
     const content = await getPortfolioContentDoc();
     res.json({ success: true, data: content });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2275,7 +2390,7 @@ app.put("/api/ns-control/content", auth, async (req, res) => {
     await content.save();
     res.json({ success: true, message: "NS Control Hub content updated", data: content });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2284,7 +2399,7 @@ app.get("/api/ns-control/projects", async (req, res) => {
     const data = await PortfolioProject.find().sort({ order: 1, createdAt: -1 });
     res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2302,7 +2417,7 @@ app.post("/api/ns-control/projects", auth, async (req, res) => {
     });
     res.status(201).json({ success: true, message: "Project saved", data: item });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2318,7 +2433,7 @@ app.patch("/api/ns-control/projects/:id", auth, async (req, res) => {
     const item = await PortfolioProject.findByIdAndUpdate(req.params.id, update, { new: true });
     res.json({ success: true, message: "Project updated", data: item });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2327,7 +2442,7 @@ app.delete("/api/ns-control/projects/:id", auth, async (req, res) => {
     await PortfolioProject.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: "Project deleted" });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2336,7 +2451,7 @@ app.get("/api/ns-control/certifications", async (req, res) => {
     const data = await PortfolioCertification.find().sort({ order: 1, createdAt: -1 });
     res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2349,7 +2464,7 @@ app.post("/api/ns-control/certifications", auth, async (req, res) => {
     const item = await PortfolioCertification.create(sanitized);
     res.status(201).json({ success: true, message: "Certification saved", data: item });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2362,7 +2477,7 @@ app.patch("/api/ns-control/certifications/:id", auth, async (req, res) => {
     const item = await PortfolioCertification.findByIdAndUpdate(req.params.id, update, { new: true });
     res.json({ success: true, message: "Certification updated", data: item });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2371,7 +2486,7 @@ app.delete("/api/ns-control/certifications/:id", auth, async (req, res) => {
     await PortfolioCertification.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: "Certification deleted" });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2380,7 +2495,7 @@ app.get("/api/ns-control/skills", async (req, res) => {
     const data = await PortfolioSkill.find().sort({ order: 1, createdAt: -1 });
     res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2393,7 +2508,7 @@ app.post("/api/ns-control/skills", auth, async (req, res) => {
     const item = await PortfolioSkill.create(sanitized);
     res.status(201).json({ success: true, message: "Skill saved", data: item });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2406,7 +2521,7 @@ app.patch("/api/ns-control/skills/:id", auth, async (req, res) => {
     const item = await PortfolioSkill.findByIdAndUpdate(req.params.id, update, { new: true });
     res.json({ success: true, message: "Skill updated", data: item });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2415,7 +2530,7 @@ app.delete("/api/ns-control/skills/:id", auth, async (req, res) => {
     await PortfolioSkill.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: "Skill deleted" });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -2657,7 +2772,7 @@ ${question}
     res.json({ answer });
   } catch (err) {
     console.error("NS.ai error:", err.message);
-    res.status(500).json({ error: "NS.ai failed: " + err.message });
+    res.status(500).json({ error: "NS.ai request failed" });
   }
 });
 
@@ -2890,9 +3005,7 @@ app.post("/api/admin/send-daily-report", auth, async (req, res) => {
   } catch (err) {
     console.error("Daily report error:", err);
     res.status(500).json({
-      error: "Daily report failed",
-      details: err.message || String(err),
-      code: err.code || null,
+      error: "Daily report failed"
     });
   }
 });
@@ -2908,12 +3021,45 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 5050;
 
+const nsAiRateLimit = new Map();
+const contactRateLimit = new Map();
+const trackRateLimit = new Map();
+
+function rateLimitCheck(map, ip, windowMs, maxRequests) {
+  const now = Date.now();
+  const record = map.get(ip) || { hits: [] };
+  record.hits = record.hits.filter(t => now - t < windowMs);
+  record.hits.push(now);
+  map.set(ip, record);
+  return record.hits.length <= maxRequests;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  [nsAiRateLimit, contactRateLimit, trackRateLimit].forEach(map => {
+    for (const [ip, record] of map) {
+      record.hits = record.hits.filter(t => now - t < 120000);
+      if (record.hits.length === 0) map.delete(ip);
+    }
+  });
+}, 10 * 60 * 1000);
+
 app.post("/api/ns-ai", async (req, res) => {
   try {
     const { message } = req.body;
 
     if (!message) {
       return res.status(400).json({ success: false, reply: "Message is required." });
+    }
+
+    if (typeof message !== "string" || message.length > 2000) {
+      return res.status(400).json({ success: false, reply: "Message too long (max 2000 chars)." });
+    }
+
+    const ip = getClientIp(req);
+
+    if (!rateLimitCheck(nsAiRateLimit, ip, 2 * 60 * 1000, 100)) {
+      return res.status(429).json({ success: false, reply: "Too many requests. Please wait a moment." });
     }
 
     // FIX: genAI is null when GEMINI_API_KEY is not set — guard before calling getGenerativeModel

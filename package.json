@@ -8,17 +8,15 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "lodash": "^4.18.1",
     "mongoose": "^8.9.5",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.10",
-    "openai": "^6.41.0",
     "request-ip": "^3.3.0",
     "streamifier": "^0.1.1",
     "ua-parser-js": "^2.0.0"
