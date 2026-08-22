@@ -214,6 +214,7 @@ const portfolioContentSchema = new mongoose.Schema({
   linkedinUrl: { type: String, default: "" },
   instagramUrl: { type: String, default: "" },
   copyrightYear: { type: String, default: "" },
+  experienceLayout: { type: String, default: "horizontal", enum: ["horizontal", "vertical", "orbit"] },
   updatedAt: { type: Date, default: Date.now }
 });
 const PortfolioContent = mongoose.model("PortfolioContent", portfolioContentSchema);
@@ -258,6 +259,17 @@ const portfolioSkillSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 const PortfolioSkill = mongoose.model("PortfolioSkill", portfolioSkillSchema);
+
+const portfolioExperienceSchema = new mongoose.Schema({
+  role: String,
+  company: String,
+  duration: String,
+  description: String,
+  active: { type: Boolean, default: true },
+  order: { type: Number, default: 999 },
+  createdAt: { type: Date, default: Date.now }
+});
+const PortfolioExperience = mongoose.model("PortfolioExperience", portfolioExperienceSchema);
 
 
 function uploadAudioToCloudinary(fileBuffer, originalName) {
@@ -2423,6 +2435,13 @@ app.put("/api/ns-control/content", auth, async (req, res) => {
       }
       sanitized.copyrightYear = year;
     }
+    if (sanitized.experienceLayout !== undefined) {
+      const layout = String(sanitized.experienceLayout).trim().toLowerCase();
+      if (layout && !["horizontal", "vertical", "orbit"].includes(layout)) {
+        return res.status(400).json({ success: false, message: "Experience layout must be horizontal, vertical, or orbit" });
+      }
+      sanitized.experienceLayout = layout || "horizontal";
+    }
     Object.assign(content, sanitized, { updatedAt: new Date() });
     await content.save();
     broadcastSSE("content-updated", {});
@@ -2573,6 +2592,71 @@ app.delete("/api/ns-control/skills/:id", auth, async (req, res) => {
   try {
     await PortfolioSkill.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: "Skill deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+app.get("/api/ns-control/experiences", async (req, res) => {
+  try {
+    const data = await PortfolioExperience.find().sort({ order: 1, createdAt: -1 });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+app.post("/api/ns-control/experiences", auth, async (req, res) => {
+  try {
+    const sanitized = { ...req.body };
+    if (sanitized.description && typeof sanitized.description === "string") {
+      sanitized.description = sanitizeHtmlInput(sanitized.description);
+    }
+    if (sanitized.role && typeof sanitized.role === "string") {
+      sanitized.role = sanitizeHtmlInput(sanitized.role);
+    }
+    if (sanitized.company && typeof sanitized.company === "string") {
+      sanitized.company = sanitizeHtmlInput(sanitized.company);
+    }
+    const item = await PortfolioExperience.create({
+      ...sanitized,
+      order: Number(sanitized.order || 999)
+    });
+    broadcastSSE("experiences-updated", {});
+    res.status(201).json({ success: true, message: "Experience saved", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+app.patch("/api/ns-control/experiences/:id", auth, async (req, res) => {
+  try {
+    const update = { ...req.body };
+    if (update.description && typeof update.description === "string") {
+      update.description = sanitizeHtmlInput(update.description);
+    }
+    if (update.role && typeof update.role === "string") {
+      update.role = sanitizeHtmlInput(update.role);
+    }
+    if (update.company && typeof update.company === "string") {
+      update.company = sanitizeHtmlInput(update.company);
+    }
+    if (update.order !== undefined) {
+      update.order = Number(update.order);
+    }
+    const item = await PortfolioExperience.findByIdAndUpdate(req.params.id, update, { new: true });
+    broadcastSSE("experiences-updated", {});
+    res.json({ success: true, message: "Experience updated", data: item });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+app.delete("/api/ns-control/experiences/:id", auth, async (req, res) => {
+  try {
+    await PortfolioExperience.findByIdAndDelete(req.params.id);
+    broadcastSSE("experiences-updated", {});
+    res.json({ success: true, message: "Experience deleted" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
   }
