@@ -2212,6 +2212,31 @@ app.get("/api/admin/security-logs", auth, async (req, res) => {
    NS CONTROL HUB API
 ========================= */
 
+const sseClients = [];
+function broadcastSSE(event, data) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (let i = sseClients.length - 1; i >= 0; i--) {
+    try { sseClients[i].write(msg); } catch { sseClients.splice(i, 1); }
+  }
+}
+
+app.get("/api/ns-control/events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "Access-Control-Allow-Origin": process.env.FRONTEND_URL || "*",
+  });
+  res.write(":\n\n");
+  const keepAlive = setInterval(() => res.write(":\n\n"), 30000);
+  sseClients.push(res);
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    const idx = sseClients.indexOf(res);
+    if (idx !== -1) sseClients.splice(idx, 1);
+  });
+});
+
 async function getPortfolioContentDoc() {
   let content = await PortfolioContent.findOne();
   if (!content) content = await PortfolioContent.create({});
@@ -2400,6 +2425,7 @@ app.put("/api/ns-control/content", auth, async (req, res) => {
     }
     Object.assign(content, sanitized, { updatedAt: new Date() });
     await content.save();
+    broadcastSSE("content-updated", {});
     res.json({ success: true, message: "NS Control Hub content updated", data: content });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
@@ -2427,6 +2453,7 @@ app.post("/api/ns-control/projects", auth, async (req, res) => {
         ? sanitized.techStack
         : String(sanitized.techStack || "").split(",").map(x => x.trim()).filter(Boolean)
     });
+    broadcastSSE("projects-updated", {});
     res.status(201).json({ success: true, message: "Project saved", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
@@ -2443,6 +2470,7 @@ app.patch("/api/ns-control/projects/:id", auth, async (req, res) => {
       update.techStack = String(update.techStack).split(",").map(x => x.trim()).filter(Boolean);
     }
     const item = await PortfolioProject.findByIdAndUpdate(req.params.id, update, { new: true });
+    broadcastSSE("projects-updated", {});
     res.json({ success: true, message: "Project updated", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
@@ -2452,6 +2480,7 @@ app.patch("/api/ns-control/projects/:id", auth, async (req, res) => {
 app.delete("/api/ns-control/projects/:id", auth, async (req, res) => {
   try {
     await PortfolioProject.findByIdAndDelete(req.params.id);
+    broadcastSSE("projects-updated", {});
     res.json({ success: true, message: "Project deleted" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
@@ -2474,6 +2503,7 @@ app.post("/api/ns-control/certifications", auth, async (req, res) => {
       sanitized.analysisText = sanitizeHtmlInput(sanitized.analysisText);
     }
     const item = await PortfolioCertification.create(sanitized);
+    broadcastSSE("certifications-updated", {});
     res.status(201).json({ success: true, message: "Certification saved", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
@@ -2487,6 +2517,7 @@ app.patch("/api/ns-control/certifications/:id", auth, async (req, res) => {
       update.analysisText = sanitizeHtmlInput(update.analysisText);
     }
     const item = await PortfolioCertification.findByIdAndUpdate(req.params.id, update, { new: true });
+    broadcastSSE("certifications-updated", {});
     res.json({ success: true, message: "Certification updated", data: item });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
@@ -2496,6 +2527,7 @@ app.patch("/api/ns-control/certifications/:id", auth, async (req, res) => {
 app.delete("/api/ns-control/certifications/:id", auth, async (req, res) => {
   try {
     await PortfolioCertification.findByIdAndDelete(req.params.id);
+    broadcastSSE("certifications-updated", {});
     res.json({ success: true, message: "Certification deleted" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
