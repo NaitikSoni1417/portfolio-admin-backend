@@ -213,6 +213,7 @@ const portfolioContentSchema = new mongoose.Schema({
   githubUrl: { type: String, default: "" },
   linkedinUrl: { type: String, default: "" },
   instagramUrl: { type: String, default: "" },
+  copyrightYear: { type: String, default: "" },
   updatedAt: { type: Date, default: Date.now }
 });
 const PortfolioContent = mongoose.model("PortfolioContent", portfolioContentSchema);
@@ -2385,6 +2386,17 @@ app.put("/api/ns-control/content", auth, async (req, res) => {
     const sanitized = { ...req.body };
     if (sanitized.aboutText && typeof sanitized.aboutText === "string") {
       sanitized.aboutText = sanitizeHtmlInput(sanitized.aboutText);
+    }
+    if (sanitized.copyrightYear !== undefined) {
+      const year = String(sanitized.copyrightYear).trim();
+      if (year && !/^\d{4}$/.test(year)) {
+        return res.status(400).json({ success: false, message: "Copyright year must be a 4-digit year (e.g. 2026)" });
+      }
+      const num = parseInt(year, 10);
+      if (year && (num < 2000 || num > 2099)) {
+        return res.status(400).json({ success: false, message: "Copyright year must be between 2000 and 2099" });
+      }
+      sanitized.copyrightYear = year;
     }
     Object.assign(content, sanitized, { updatedAt: new Date() });
     await content.save();
