@@ -476,17 +476,10 @@ function suspendedResponse(res, ip, reason = "Suspicious activity detected") {
 async function socMiddleware(req, res, next) {
   const ip = getClientIp(req);
   const now = Date.now();
-  const windowMs = 30 * 1000;
+  const windowMs = 60 * 1000; // 1 minute window
   const blockMs = SOC_BLOCK_MS;
 
-  if (isAdminProtectedIp(ip)) {
-    return next();
-  }
-
-  if (isDevelopmentOrigin(req)) {
-    return next();
-  }
-
+  // Admin panel logged-in users (valid JWT) bypass firewall entirely
   const authHeader = req.headers.authorization?.replace("Bearer ", "");
   if (authHeader) {
     try {
@@ -495,6 +488,17 @@ async function socMiddleware(req, res, next) {
     } catch {}
   }
 
+  // Admin safe IPs never blocked
+  if (isAdminProtectedIp(ip)) {
+    return next();
+  }
+
+  // Localhost dev bypass
+  if (isDevelopmentOrigin(req)) {
+    return next();
+  }
+
+  // Manual blocks
   if (manualBlockedIps.has(ip)) {
     addSocEvent({ type: "MANUAL_BLOCKED", severity: "HIGH", ip, path: req.path, reason: "IP manually blocked by admin" });
     return res.status(429).json({ error: "NS.ai SOC Firewall: IP blocked by admin." });
@@ -523,9 +527,10 @@ async function socMiddleware(req, res, next) {
 
   const hits = item.hits.length;
 
-  const blockLimit = emergencyLockdown ? 25 : 50;
-  const highLimit = emergencyLockdown ? 15 : 35;
-  const mediumLimit = emergencyLockdown ? 8 : 20;
+  // 1000 requests in 1 minute = block (emergency: 500 in 1 minute)
+  const blockLimit = emergencyLockdown ? 500 : 1000;
+  const highLimit = emergencyLockdown ? 300 : 700;
+  const mediumLimit = emergencyLockdown ? 150 : 400;
 
   if (hits >= blockLimit) {
     item.blockedUntil = now + blockMs;
@@ -536,7 +541,7 @@ async function socMiddleware(req, res, next) {
       severity: "CRITICAL",
       ip,
       path: req.path,
-      reason: `${hits} requests in 30 seconds`
+      reason: `${hits} requests in 1 minute`
     });
 
     socFirewall.set(ip, item);
@@ -547,7 +552,7 @@ async function socMiddleware(req, res, next) {
       { ip },
       {
         ip,
-        reason: `${hits} requests in 30 seconds`,
+        reason: `${hits} requests in 1 minute`,
         expiresAt: blockedUntil,
         blockedBy: "NS.ai SOC",
         createdAt: new Date()
@@ -558,7 +563,7 @@ async function socMiddleware(req, res, next) {
     await SecurityLog.create({
       ip,
       action: "AUTO_BLOCKED_TRAFFIC",
-      reason: `${hits} requests in 30 seconds`,
+      reason: `${hits} requests in 1 minute`,
       attempts: hits,
       blockedUntil,
       userAgent: req.headers["user-agent"] || "",
@@ -569,13 +574,13 @@ async function socMiddleware(req, res, next) {
       title: "Automatic Traffic Block Activated",
       severity: "CRITICAL",
       ip,
-      reason: `${hits} requests detected in 30 seconds. IP blocked for 1 hour.`,
+      reason: `${hits} requests detected in 1 minute. IP blocked for 1 hour.`,
       path: req.path,
       blockedUntil,
       info: await getSecurityContext(req, ip, "AUTO_BLOCK")
     });
 
-    return suspendedResponse(res, ip, `${hits} requests in 30 seconds`);
+    return suspendedResponse(res, ip, `${hits} requests in 1 minute`);
     
   }
 
@@ -586,7 +591,7 @@ async function socMiddleware(req, res, next) {
       severity: "HIGH",
       ip,
       path: req.path,
-      reason: `${hits} requests in 30 seconds`
+      reason: `${hits} requests in 1 minute`
     });
   } else if (hits >= mediumLimit) {
     item.score = 55;
@@ -595,7 +600,7 @@ async function socMiddleware(req, res, next) {
       severity: "MEDIUM",
       ip,
       path: req.path,
-      reason: `${hits} requests in 30 seconds`
+      reason: `${hits} requests in 1 minute`
     });
   }
 
