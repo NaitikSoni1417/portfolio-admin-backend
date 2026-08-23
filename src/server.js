@@ -214,7 +214,7 @@ const portfolioContentSchema = new mongoose.Schema({
   linkedinUrl: { type: String, default: "" },
   instagramUrl: { type: String, default: "" },
   copyrightYear: { type: String, default: "" },
-  experienceLayout: { type: String, default: "horizontal", enum: ["horizontal", "vertical", "orbit"] },
+  experienceLayout: { type: String, default: "horizontal", enum: ["horizontal", "vertical", "grid"] },
   updatedAt: { type: Date, default: Date.now }
 });
 const PortfolioContent = mongoose.model("PortfolioContent", portfolioContentSchema);
@@ -2437,8 +2437,8 @@ app.put("/api/ns-control/content", auth, async (req, res) => {
     }
     if (sanitized.experienceLayout !== undefined) {
       const layout = String(sanitized.experienceLayout).trim().toLowerCase();
-      if (layout && !["horizontal", "vertical", "orbit"].includes(layout)) {
-        return res.status(400).json({ success: false, message: "Experience layout must be horizontal, vertical, or orbit" });
+      if (layout && !["horizontal", "vertical", "grid"].includes(layout)) {
+        return res.status(400).json({ success: false, message: "Experience layout must be horizontal, vertical, or grid" });
       }
       sanitized.experienceLayout = layout || "horizontal";
     }
