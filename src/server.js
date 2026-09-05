@@ -91,6 +91,7 @@ const messageSchema = new mongoose.Schema({
   name: String,
   email: String,
   message: String,
+  subject: String,
   ip: String,
   city: String,
   region: String,
@@ -114,8 +115,17 @@ const messageSchema = new mongoose.Schema({
   status: { type: String, default: "Unread" },
   isTrash: { type: Boolean, default: false },
   trashedAt: Date,
+  isSent: { type: Boolean, default: false },
   reply: String,
   repliedAt: Date,
+  replies: [
+    {
+      reply: String,
+      repliedAt: { type: Date, default: Date.now },
+      sender: { type: String, default: "Naitik Soni <naitik.infosec@gmail.com>" },
+      messageId: String,
+    }
+  ],
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -1916,7 +1926,7 @@ app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
                     <span style="font-size:18px;font-weight:800;color:#ffffff;letter-spacing:-0.5px">NS</span>
                   </td>
                   <td style="padding-left:14px">
-                    <span style="font-size:17px;font-weight:700;color:#1d1d1f;letter-spacing:-0.3px">Naitik Soni</span><br/>
+                    <a href="https://naitiksoni1417.netlify.app" target="_blank" style="text-decoration:none;font-size:17px;font-weight:700;color:#1d1d1f;letter-spacing:-0.3px">Naitik Soni</a><br/>
                     <span style="font-size:11px;font-weight:600;color:#86868b;letter-spacing:0.5px;text-transform:uppercase">Cybersecurity Engineer & Researcher</span>
                   </td>
                 </tr></table>
@@ -1949,11 +1959,12 @@ ${escapeHtml(reply)}
                   <!-- Signature -->
                   <div style="margin-top:32px;padding-top:20px;border-top:1px solid #f2f2f7">
                     <p style="margin:0;font-size:14px;font-weight:700;color:#1d1d1f">Best regards,</p>
-                    <p style="margin:4px 0 0 0;font-size:14px;font-weight:800;color:#007AFF">Naitik Soni</p>
+                    <p style="margin:4px 0 0 0;font-size:15px;font-weight:800;color:#007AFF">
+                      <a href="https://naitiksoni1417.netlify.app" target="_blank" style="color:#007AFF;text-decoration:none;font-weight:800">Naitik Soni</a>
+                    </p>
                     <p style="margin:2px 0 0 0;font-size:12px;color:#86868b">Cybersecurity Engineer | Ethical Hacker | Full Stack</p>
                     <p style="margin:6px 0 0 0;font-size:12px;color:#007AFF">
-                      <a href="https://naitiksoni.tech" style="color:#007AFF;text-decoration:none;font-weight:600">naitiksoni.tech</a> · 
-                      <a href="https://github.com/NaitikSoni" style="color:#007AFF;text-decoration:none;font-weight:600">GitHub</a> · 
+                      <a href="https://github.com/NaitikSoni" target="_blank" style="color:#007AFF;text-decoration:none;font-weight:600">GitHub</a> · 
                       <a href="mailto:${senderEmail}" style="color:#86868b;text-decoration:none">${senderEmail}</a>
                     </p>
                   </div>
@@ -1986,6 +1997,13 @@ ${escapeHtml(reply)}
     msg.read = true;
     msg.reply = reply;
     msg.repliedAt = new Date();
+    if (!msg.replies) msg.replies = [];
+    msg.replies.push({
+      reply,
+      repliedAt: new Date(),
+      sender: "Naitik Soni <naitik.infosec@gmail.com>",
+      messageId: info.messageId,
+    });
     await msg.save();
 
     console.log(`✅ Real email reply sent to ${msg.email} via Gmail SMTP (Message ID: ${info.messageId})`);
@@ -1995,6 +2013,7 @@ ${escapeHtml(reply)}
       deliveredTo: msg.email,
       sentVia: "Gmail SMTP",
       messageId: info.messageId,
+      messageData: msg,
     });
   } catch (err) {
     console.error("Reply email failed:", err);
@@ -2018,7 +2037,7 @@ app.post("/api/admin/send-mail", auth, async (req, res) => {
         <h2 style="margin:0 0 16px 0;color:#1d1d1f">${escapeHtml(mailSubject)}</h2>
         <div style="font-size:14px;color:#1d1d1f;line-height:1.7;white-space:pre-wrap">${escapeHtml(body)}</div>
         <div style="margin-top:24px;padding-top:16px;border-top:1px solid #f2f2f7;font-size:12px;color:#86868b">
-          Sent by Naitik Soni (<a href="mailto:${senderEmail}" style="color:#007AFF">${senderEmail}</a>)
+          Sent by <a href="https://naitiksoni1417.netlify.app" target="_blank" style="color:#007AFF;font-weight:700;text-decoration:none">Naitik Soni</a> (<a href="mailto:${senderEmail}" style="color:#007AFF">${senderEmail}</a>)
         </div>
       </div>
     `;
@@ -2032,6 +2051,26 @@ app.post("/api/admin/send-mail", auth, async (req, res) => {
       html,
     });
 
+    const newSentMsg = await Message.create({
+      name: to.trim().split("@")[0],
+      email: to.trim(),
+      message: body.trim(),
+      subject: mailSubject,
+      status: "Replied",
+      isSent: true,
+      reply: body.trim(),
+      repliedAt: new Date(),
+      replies: [
+        {
+          reply: body.trim(),
+          repliedAt: new Date(),
+          sender: "Naitik Soni <naitik.infosec@gmail.com>",
+          messageId: info.messageId,
+        }
+      ],
+      createdAt: new Date(),
+    });
+
     console.log(`✅ Real direct email sent to ${to} via Gmail SMTP (Message ID: ${info.messageId})`);
     res.json({
       success: true,
@@ -2039,6 +2078,7 @@ app.post("/api/admin/send-mail", auth, async (req, res) => {
       deliveredTo: to.trim(),
       sentVia: "Gmail SMTP",
       messageId: info.messageId,
+      sentMsg: newSentMsg,
     });
   } catch (err) {
     console.error("Send custom mail failed:", err);
