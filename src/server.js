@@ -425,7 +425,7 @@ async function deliverMail({ fromName = "Naitik Soni", to, replyTo, subject, tex
   // 1. Primary: Relay via Netlify Serverless Function over HTTPS (Port 443)
   // Bypasses Render's blocked outbound SMTP ports completely and runs on AWS Lambda with IPv4 SMTP
   try {
-    const relayUrl = process.env.EMAIL_RELAY_URL || "https://naitiksoni1417.netlify.app/.netlify/functions/send-email";
+    const relayUrl = process.env.EMAIL_RELAY_URL || "https://curious-madeleine-32492a.netlify.app/.netlify/functions/send-email";
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     const relayRes = await fetch(relayUrl, {
