@@ -389,6 +389,174 @@ function getMailTransporter() {
   });
 }
 
+function contactNotificationTemplate({ name, email, message, city, country, browser, os, device, page, createdAt }) {
+  const time = new Date(createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const initial = (name || "V").charAt(0).toUpperCase();
+
+  return `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+  <body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#1d1d1f;-webkit-font-smoothing:antialiased">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 20px">
+      <tr><td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
+
+          <!-- Logo -->
+          <tr><td align="center" style="padding:0 0 32px 0">
+            <table cellpadding="0" cellspacing="0"><tr>
+              <td style="width:48px;height:48px;background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:12px;text-align:center;vertical-align:middle">
+                <span style="font-size:20px;font-weight:800;color:#67e8f9;letter-spacing:-0.5px">NS</span>
+              </td>
+              <td style="padding-left:14px">
+                <span style="font-size:18px;font-weight:700;color:#1d1d1f;letter-spacing:-0.3px">Naitik Soni</span><br/>
+                <span style="font-size:11px;font-weight:500;color:#86868b;letter-spacing:0.5px">PORTFOLIO NOTIFICATION</span>
+              </td>
+            </tr></table>
+          </td></tr>
+
+          <!-- Main Card -->
+          <tr><td style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06)">
+
+            <!-- Header Banner -->
+            <table width="100%" cellpadding="0" cellspacing="0"><tr>
+              <td style="background:linear-gradient(135deg,#0f0b1e 0%,#1a1040 40%,#0d2137 100%);padding:40px 36px 36px">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td>
+                      <p style="margin:0;font-size:11px;font-weight:700;color:#67e8f9;letter-spacing:3px;text-transform:uppercase">New Message Received</p>
+                      <h1 style="margin:12px 0 0;font-size:28px;font-weight:800;color:#ffffff;line-height:1.25;letter-spacing:-0.5px">
+                        ${escapeHtml(name)} sent you a message
+                      </h1>
+                      <p style="margin:10px 0 0;font-size:14px;color:rgba(255,255,255,0.55);font-weight:500">
+                        via your portfolio contact form
+                      </p>
+                    </td>
+                    <td style="width:72px;vertical-align:top;text-align:right">
+                      <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#67e8f9,#06b6d4);text-align:center;line-height:64px">
+                        <span style="font-size:26px;font-weight:800;color:#0f0b1e">${initial}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr></table>
+
+            <!-- Body -->
+            <table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:36px">
+
+              <!-- Sender Info -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="width:130px;padding:12px 0;color:#86868b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;vertical-align:top">From</td>
+                  <td style="padding:12px 0;font-size:15px;font-weight:600;color:#1d1d1f;vertical-align:top">
+                    ${escapeHtml(name)}<br/>
+                    <a href="mailto:${escapeHtml(email)}" style="color:#0071e3;text-decoration:none;font-weight:500;font-size:14px">${escapeHtml(email)}</a>
+                  </td>
+                </tr>
+                <tr><td colspan="2" style="padding:0"><div style="height:1px;background:#f0f0f0"></div></td></tr>
+
+                <tr>
+                  <td style="width:130px;padding:12px 0;color:#86868b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;vertical-align:top">Received</td>
+                  <td style="padding:12px 0;font-size:14px;color:#1d1d1f;font-weight:500">${time}</td>
+                </tr>
+                <tr><td colspan="2" style="padding:0"><div style="height:1px;background:#f0f0f0"></div></td></tr>
+
+                <tr>
+                  <td style="width:130px;padding:12px 0;color:#86868b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;vertical-align:top">Page</td>
+                  <td style="padding:12px 0;font-size:14px;color:#1d1d1f;font-weight:500">${escapeHtml(page || "/contact")}</td>
+                </tr>
+              </table>
+
+              <!-- Message Box -->
+              <div style="margin-top:28px;background:#f9f9fb;border-radius:14px;padding:24px 28px;border:1px solid #e8e8ed">
+                <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#86868b;letter-spacing:1.5px;text-transform:uppercase">Message</p>
+                <p style="margin:0;font-size:15px;line-height:1.75;color:#1d1d1f;font-weight:400;white-space:pre-wrap;word-break:break-word">${escapeHtml(message).replace(/\n/g, "<br/>")}</p>
+              </div>
+
+              <!-- Device Info -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px">
+                <tr>
+                  <td style="padding:0">
+                    <div style="display:inline-block;background:#f0f0f5;border-radius:10px;padding:8px 14px;margin:0 6px 6px 0">
+                      <span style="font-size:11px;font-weight:600;color:#6e6e73">${escapeHtml(browser || "Unknown")}</span>
+                    </div>
+                    <div style="display:inline-block;background:#f0f0f5;border-radius:10px;padding:8px 14px;margin:0 6px 6px 0">
+                      <span style="font-size:11px;font-weight:600;color:#6e6e73">${escapeHtml(os || "Unknown")}</span>
+                    </div>
+                    <div style="display:inline-block;background:#f0f0f5;border-radius:10px;padding:8px 14px;margin:0 6px 6px 0">
+                      <span style="font-size:11px;font-weight:600;color:#6e6e73">${escapeHtml(device || "Desktop")}</span>
+                    </div>
+                    ${city && city !== "Unknown" ? `
+                    <div style="display:inline-block;background:#f0f0f5;border-radius:10px;padding:8px 14px;margin:0 6px 6px 0">
+                      <span style="font-size:11px;font-weight:600;color:#6e6e73">${escapeHtml(city)}${country && country !== "Unknown" ? ", " + escapeHtml(country) : ""}</span>
+                    </div>` : ""}
+                  </td>
+                </tr>
+              </table>
+
+            </td></tr></table>
+
+            <!-- Footer -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding:0 36px"><div style="height:1px;background:#f0f0f0"></div></td></tr>
+              <tr><td style="padding:20px 36px 24px;text-align:center">
+                <p style="margin:0;font-size:12px;color:#86868b;font-weight:500">
+                  This message was sent through your portfolio contact form at<br/>
+                  <a href="https://naitiksoni1417.netlify.app" style="color:#0071e3;text-decoration:none;font-weight:600">naitiksoni1417.netlify.app</a>
+                </p>
+              </td></tr>
+            </table>
+
+          </td></tr>
+
+          <!-- Bottom -->
+          <tr><td style="padding:28px 0;text-align:center">
+            <p style="margin:0;font-size:11px;color:#b0b0b6;font-weight:500">
+              Naitik Soni &bull; Cybersecurity Engineer &bull; Ethical Hacker<br/>
+              NS Indian Cyber Army
+            </p>
+          </td></tr>
+
+        </table>
+      </td></tr>
+    </table>
+  </body>
+  </html>`;
+}
+
+async function sendContactNotification(msgDoc) {
+  try {
+    const transporter = getMailTransporter();
+    if (!transporter) return;
+
+    const html = contactNotificationTemplate({
+      name: msgDoc.name,
+      email: msgDoc.email,
+      message: msgDoc.message,
+      city: msgDoc.city,
+      country: msgDoc.country,
+      browser: msgDoc.browser,
+      os: msgDoc.os,
+      device: msgDoc.device,
+      page: msgDoc.page,
+      createdAt: msgDoc.createdAt
+    });
+
+    await transporter.sendMail({
+      from: `"Naitik Soni Portfolio" <${process.env.MAIL_USER}>`,
+      to: process.env.MAIL_USER,
+      replyTo: msgDoc.email,
+      subject: `New message from ${msgDoc.name} — Portfolio Contact`,
+      html
+    });
+
+    console.log(`✅ Contact email notification sent → ${process.env.MAIL_USER} from ${msgDoc.email}`);
+  } catch (e) {
+    console.error("Contact email notification failed:", e.message);
+  }
+}
+
 function nsaiSecurityMailTemplate({ title, severity, ip, reason, path, info = {}, blockedUntil }) {
   const rows = [
     ["IP Address", ip],
@@ -1386,6 +1554,8 @@ app.post("/api/contact", async (req, res) => {
       status: "Unread",
       createdAt: new Date()
     });
+
+    sendContactNotification(msg);
 
     res.json({ success: true, message: msg });
   } catch (err) {
