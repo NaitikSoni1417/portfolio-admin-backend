@@ -400,12 +400,78 @@ function getMailTransporter() {
   const pass = process.env.MAIL_PASS || "vsnw bpgi ulyg njvh";
 
   return nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    family: 4, // Force IPv4 to prevent ENETUNREACH issues on cloud servers
     auth: {
       user,
       pass
-    }
+    },
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 8000,
   });
+}
+
+async function deliverMail({ fromName = "Naitik Soni", to, replyTo, subject, text, html }) {
+  const senderEmail = process.env.MAIL_USER || "naitik.infosec@gmail.com";
+  const recipient = (to || "").trim();
+  const mailSubject = subject || "Message from Naitik Soni";
+  const mailHtml = html || (text ? `<div style="font-family:sans-serif;white-space:pre-wrap">${escapeHtml(text)}</div>` : "");
+  const mailText = text || (html ? html.replace(/<[^>]+>/g, " ") : "");
+  const cleanReplyTo = replyTo || senderEmail;
+
+  // 1. Primary: Relay via Netlify Serverless Function over HTTPS (Port 443)
+  // Bypasses Render's blocked outbound SMTP ports completely and runs on AWS Lambda with IPv4 SMTP
+  try {
+    const relayUrl = process.env.EMAIL_RELAY_URL || "https://naitiksoni1417.netlify.app/.netlify/functions/send-email";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const relayRes = await fetch(relayUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: recipient,
+        subject: mailSubject,
+        html: mailHtml,
+        text: mailText,
+        replyTo: cleanReplyTo,
+        fromName,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (relayRes.ok) {
+      const data = await relayRes.json();
+      console.log(`[Email Delivered via Netlify Relay] to ${recipient} (Message ID: ${data.messageId})`);
+      return { success: true, messageId: data.messageId, via: "Netlify Relay" };
+    } else {
+      const errBody = await relayRes.text().catch(() => "");
+      console.warn(`[Netlify Relay Status ${relayRes.status}]:`, errBody);
+    }
+  } catch (relayErr) {
+    console.warn(`[Netlify Relay Error, attempting direct IPv4 SMTP]:`, relayErr.message);
+  }
+
+  // 2. Fallback: Direct IPv4 SMTP
+  try {
+    const transporter = getMailTransporter();
+    const info = await transporter.sendMail({
+      from: `"${fromName}" <${senderEmail}>`,
+      to: recipient,
+      replyTo: cleanReplyTo,
+      subject: mailSubject,
+      text: mailText,
+      html: mailHtml,
+    });
+    console.log(`[Email Delivered via Direct SMTP] to ${recipient} (Message ID: ${info.messageId})`);
+    return { success: true, messageId: info.messageId, via: "Direct SMTP" };
+  } catch (smtpErr) {
+    console.error(`[Direct SMTP Delivery Failed]:`, smtpErr.message);
+    throw smtpErr;
+  }
 }
 
 function contactNotificationTemplate({ name, email, message, city, country, browser, os, device, page, createdAt }) {
@@ -546,9 +612,6 @@ function contactNotificationTemplate({ name, email, message, city, country, brow
 
 async function sendContactNotification(msgDoc) {
   try {
-    const transporter = getMailTransporter();
-    if (!transporter) return;
-
     const html = contactNotificationTemplate({
       name: msgDoc.name,
       email: msgDoc.email,
@@ -562,15 +625,15 @@ async function sendContactNotification(msgDoc) {
       createdAt: msgDoc.createdAt
     });
 
-    await transporter.sendMail({
-      from: `"Naitik Soni Portfolio" <${process.env.MAIL_USER}>`,
-      to: process.env.MAIL_USER,
+    await deliverMail({
+      fromName: "Naitik Soni Portfolio",
+      to: process.env.MAIL_USER || "naitik.infosec@gmail.com",
       replyTo: msgDoc.email,
       subject: `New message from ${msgDoc.name} — Portfolio Contact`,
       html
     });
 
-    console.log(`✅ Contact email notification sent → ${process.env.MAIL_USER} from ${msgDoc.email}`);
+    console.log(`✅ Contact email notification sent → ${process.env.MAIL_USER || "naitik.infosec@gmail.com"} from ${msgDoc.email}`);
   } catch (e) {
     console.error("Contact email notification failed:", e.message);
   }
@@ -628,14 +691,8 @@ function nsaiSecurityMailTemplate({ title, severity, ip, reason, path, info = {}
 
 async function sendNsaiSecurityAlert(payload) {
   try {
-    const transporter = getMailTransporter();
-    if (!transporter) {
-      console.warn("⚠️  NS.ai SOC mail skipped: MAIL_USER / MAIL_PASS not configured in environment.");
-      return;
-    }
-
-    await transporter.sendMail({
-      from: `"NS.ai Security Operation Centre" <${process.env.MAIL_USER}>`,
+    await deliverMail({
+      fromName: "NS.ai Security Operation Centre",
       to: SOC_ADMIN_EMAIL,
       subject: `🚨 ${payload.severity} NS.ai SOC Alert - ${payload.ip} - ${new Date().toLocaleString("en-IN")}`,
       html: nsaiSecurityMailTemplate(payload)
@@ -1899,7 +1956,7 @@ app.delete("/api/admin/messages/trash/empty", auth, async (req, res) => {
 
 app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
   try {
-    const { reply, subject: customSubject } = req.body;
+    const { reply, subject: customSubject, messageId: clientMessageId } = req.body;
     if (!reply || !reply.trim()) {
       return res.status(400).json({ error: "Reply message is required" });
     }
@@ -1907,112 +1964,120 @@ app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
     const msg = await Message.findById(req.params.id);
     if (!msg) return res.status(404).json({ error: "Message not found" });
 
-    const transporter = getMailTransporter();
     const senderEmail = "naitik.infosec@gmail.com";
     const subject = customSubject || `Re: Collaboration & Inquiry - Naitik Soni`;
 
-    const html = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
-      <body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#1d1d1f;-webkit-font-smoothing:antialiased">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 20px">
-          <tr><td align="center">
-            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:620px">
-              <!-- Header Brand -->
-              <tr><td style="padding:0 0 24px 0">
-                <table cellpadding="0" cellspacing="0"><tr>
-                  <td style="width:44px;height:44px;background:linear-gradient(135deg,#007AFF,#0051A8);border-radius:12px;text-align:center;vertical-align:middle">
-                    <span style="font-size:18px;font-weight:800;color:#ffffff;letter-spacing:-0.5px">NS</span>
-                  </td>
-                  <td style="padding-left:14px">
-                    <a href="https://naitiksoni1417.netlify.app" target="_blank" style="text-decoration:none;font-size:17px;font-weight:700;color:#1d1d1f;letter-spacing:-0.3px">Naitik Soni</a><br/>
-                    <span style="font-size:11px;font-weight:600;color:#86868b;letter-spacing:0.5px;text-transform:uppercase">Cybersecurity Engineer & Researcher</span>
-                  </td>
-                </tr></table>
-              </td></tr>
+    let deliveryId = clientMessageId;
+    let sentMethod = "Client Netlify Function";
 
-              <!-- Card -->
-              <tr><td style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #e5e5ea">
-                <!-- Top blue accent bar -->
-                <div style="height:4px;background:linear-gradient(90deg,#007AFF,#5856D6)"></div>
-                
-                <div style="padding:32px 32px 28px 32px">
-                  <p style="margin:0 0 16px 0;font-size:15px;color:#1d1d1f;font-weight:600">
-                    Hello ${escapeHtml(msg.name || "there")},
-                  </p>
+    // If client hasn't already dispatched via Netlify Function, dispatch via server deliverMail
+    if (!deliveryId) {
+      const html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+        <body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#1d1d1f;-webkit-font-smoothing:antialiased">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 20px">
+            <tr><td align="center">
+              <table width="100%" cellpadding="0" cellspacing="0" style="max-width:620px">
+                <!-- Header Brand -->
+                <tr><td style="padding:0 0 24px 0">
+                  <table cellpadding="0" cellspacing="0"><tr>
+                    <td style="width:44px;height:44px;background:linear-gradient(135deg,#007AFF,#0051A8);border-radius:12px;text-align:center;vertical-align:middle">
+                      <span style="font-size:18px;font-weight:800;color:#ffffff;letter-spacing:-0.5px">NS</span>
+                    </td>
+                    <td style="padding-left:14px">
+                      <a href="https://naitiksoni1417.netlify.app" target="_blank" style="text-decoration:none;font-size:17px;font-weight:700;color:#1d1d1f;letter-spacing:-0.3px">Naitik Soni</a><br/>
+                      <span style="font-size:11px;font-weight:600;color:#86868b;letter-spacing:0.5px;text-transform:uppercase">Cybersecurity Engineer & Researcher</span>
+                    </td>
+                  </tr></table>
+                </td></tr>
 
-                  <div style="font-size:14px;color:#1d1d1f;line-height:1.75;white-space:pre-wrap;background:#f9f9fb;border-left:3px solid #007AFF;padding:16px 20px;border-radius:0 12px 12px 0;margin:16px 0 24px 0">
+                <!-- Card -->
+                <tr><td style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #e5e5ea">
+                  <!-- Top blue accent bar -->
+                  <div style="height:4px;background:linear-gradient(90deg,#007AFF,#5856D6)"></div>
+                  
+                  <div style="padding:32px 32px 28px 32px">
+                    <p style="margin:0 0 16px 0;font-size:15px;color:#1d1d1f;font-weight:600">
+                      Hello ${escapeHtml(msg.name || "there")},
+                    </p>
+
+                    <div style="font-size:14px;color:#1d1d1f;line-height:1.75;white-space:pre-wrap;background:#f9f9fb;border-left:3px solid #007AFF;padding:16px 20px;border-radius:0 12px 12px 0;margin:16px 0 24px 0">
 ${escapeHtml(reply)}
+                    </div>
+
+                    <!-- Quoted original message -->
+                    <div style="margin-top:28px;padding-top:20px;border-top:1px solid #e5e5ea">
+                      <p style="margin:0 0 8px 0;font-size:11px;font-weight:700;color:#86868b;text-transform:uppercase;letter-spacing:0.5px">
+                        In response to your inquiry:
+                      </p>
+                      <p style="margin:0;font-size:13px;color:#636366;line-height:1.6;font-style:italic">
+                        "${escapeHtml(msg.message || "").slice(0, 300)}${(msg.message || "").length > 300 ? "..." : ""}"
+                      </p>
+                    </div>
+
+                    <!-- Signature -->
+                    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #f2f2f7">
+                      <p style="margin:0;font-size:14px;font-weight:700;color:#1d1d1f">Best regards,</p>
+                      <p style="margin:4px 0 0 0;font-size:15px;font-weight:800;color:#007AFF">
+                        <a href="https://naitiksoni1417.netlify.app" target="_blank" style="color:#007AFF;text-decoration:none;font-weight:800">Naitik Soni</a>
+                      </p>
+                      <p style="margin:2px 0 0 0;font-size:12px;color:#86868b">Cybersecurity Engineer | Ethical Hacker | Full Stack</p>
+                      <p style="margin:6px 0 0 0;font-size:12px;color:#007AFF">
+                        <a href="https://github.com/NaitikSoni" target="_blank" style="color:#007AFF;text-decoration:none;font-weight:600">GitHub</a> · 
+                        <a href="mailto:${senderEmail}" style="color:#86868b;text-decoration:none">${senderEmail}</a>
+                      </p>
+                    </div>
                   </div>
 
-                  <!-- Quoted original message -->
-                  <div style="margin-top:28px;padding-top:20px;border-top:1px solid #e5e5ea">
-                    <p style="margin:0 0 8px 0;font-size:11px;font-weight:700;color:#86868b;text-transform:uppercase;letter-spacing:0.5px">
-                      In response to your inquiry:
-                    </p>
-                    <p style="margin:0;font-size:13px;color:#636366;line-height:1.6;font-style:italic">
-                      "${escapeHtml(msg.message || "").slice(0, 300)}${(msg.message || "").length > 300 ? "..." : ""}"
+                  <!-- Footer -->
+                  <div style="background:#f5f5f7;padding:14px 32px;border-top:1px solid #e5e5ea;text-align:center">
+                    <p style="margin:0;font-size:11px;color:#86868b">
+                      This reply was sent securely via Naitik Soni Admin Command Center.
                     </p>
                   </div>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+      `;
 
-                  <!-- Signature -->
-                  <div style="margin-top:32px;padding-top:20px;border-top:1px solid #f2f2f7">
-                    <p style="margin:0;font-size:14px;font-weight:700;color:#1d1d1f">Best regards,</p>
-                    <p style="margin:4px 0 0 0;font-size:15px;font-weight:800;color:#007AFF">
-                      <a href="https://naitiksoni1417.netlify.app" target="_blank" style="color:#007AFF;text-decoration:none;font-weight:800">Naitik Soni</a>
-                    </p>
-                    <p style="margin:2px 0 0 0;font-size:12px;color:#86868b">Cybersecurity Engineer | Ethical Hacker | Full Stack</p>
-                    <p style="margin:6px 0 0 0;font-size:12px;color:#007AFF">
-                      <a href="https://github.com/NaitikSoni" target="_blank" style="color:#007AFF;text-decoration:none;font-weight:600">GitHub</a> · 
-                      <a href="mailto:${senderEmail}" style="color:#86868b;text-decoration:none">${senderEmail}</a>
-                    </p>
-                  </div>
-                </div>
-
-                <!-- Footer -->
-                <div style="background:#f5f5f7;padding:14px 32px;border-top:1px solid #e5e5ea;text-align:center">
-                  <p style="margin:0;font-size:11px;color:#86868b">
-                    This reply was sent securely via Naitik Soni Admin Command Center.
-                  </p>
-                </div>
-              </td></tr>
-            </table>
-          </td></tr>
-        </table>
-      </body>
-      </html>
-    `;
-
-    const info = await transporter.sendMail({
-      from: `"Naitik Soni" <${senderEmail}>`,
-      to: msg.email,
-      replyTo: senderEmail,
-      subject,
-      text: reply,
-      html,
-    });
+      const deliveryResult = await deliverMail({
+        fromName: "Naitik Soni",
+        to: msg.email,
+        replyTo: senderEmail,
+        subject,
+        text: reply.trim(),
+        html,
+      });
+      deliveryId = deliveryResult.messageId;
+      sentMethod = deliveryResult.via || "Server Delivery";
+    }
 
     msg.status = "Replied";
     msg.read = true;
-    msg.reply = reply;
+    msg.reply = reply.trim();
     msg.repliedAt = new Date();
     if (!msg.replies) msg.replies = [];
-    msg.replies.push({
-      reply,
+    const replyItem = {
+      reply: reply.trim(),
       repliedAt: new Date(),
       sender: "Naitik Soni <naitik.infosec@gmail.com>",
-      messageId: info.messageId,
-    });
+      messageId: deliveryId || `reply-${Date.now()}`,
+    };
+    msg.replies.push(replyItem);
     await msg.save();
 
-    console.log(`✅ Real email reply sent to ${msg.email} via Gmail SMTP (Message ID: ${info.messageId})`);
+    console.log(`✅ Real email reply saved for ${msg.email} via ${sentMethod} (Message ID: ${deliveryId})`);
     res.json({
       success: true,
       message: `Reply delivered to ${msg.email}`,
       deliveredTo: msg.email,
-      sentVia: "Gmail SMTP",
-      messageId: info.messageId,
+      sentVia: sentMethod,
+      messageId: deliveryId,
       messageData: msg,
     });
   } catch (err) {
@@ -2023,33 +2088,39 @@ ${escapeHtml(reply)}
 
 app.post("/api/admin/send-mail", auth, async (req, res) => {
   try {
-    const { to, subject, body } = req.body;
+    const { to, subject, body, messageId: clientMessageId } = req.body;
     if (!to || !to.trim() || !body || !body.trim()) {
       return res.status(400).json({ error: "Recipient (to) and body are required" });
     }
 
-    const transporter = getMailTransporter();
     const mailSubject = subject?.trim() || "Message from Naitik Soni";
     const senderEmail = "naitik.infosec@gmail.com";
 
-    const html = `
-      <div style="font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;max-width:600px;margin:auto;padding:24px;background:#ffffff;border-radius:16px;border:1px solid #e5e5ea">
-        <h2 style="margin:0 0 16px 0;color:#1d1d1f">${escapeHtml(mailSubject)}</h2>
-        <div style="font-size:14px;color:#1d1d1f;line-height:1.7;white-space:pre-wrap">${escapeHtml(body)}</div>
-        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #f2f2f7;font-size:12px;color:#86868b">
-          Sent by <a href="https://naitiksoni1417.netlify.app" target="_blank" style="color:#007AFF;font-weight:700;text-decoration:none">Naitik Soni</a> (<a href="mailto:${senderEmail}" style="color:#007AFF">${senderEmail}</a>)
-        </div>
-      </div>
-    `;
+    let deliveryId = clientMessageId;
+    let sentMethod = "Client Netlify Function";
 
-    const info = await transporter.sendMail({
-      from: `"Naitik Soni" <${senderEmail}>`,
-      to: to.trim(),
-      replyTo: senderEmail,
-      subject: mailSubject,
-      text: body,
-      html,
-    });
+    if (!deliveryId) {
+      const html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;max-width:600px;margin:auto;padding:24px;background:#ffffff;border-radius:16px;border:1px solid #e5e5ea">
+          <h2 style="margin:0 0 16px 0;color:#1d1d1f">${escapeHtml(mailSubject)}</h2>
+          <div style="font-size:14px;color:#1d1d1f;line-height:1.7;white-space:pre-wrap">${escapeHtml(body)}</div>
+          <div style="margin-top:24px;padding-top:16px;border-top:1px solid #f2f2f7;font-size:12px;color:#86868b">
+            Sent by <a href="https://naitiksoni1417.netlify.app" target="_blank" style="color:#007AFF;font-weight:700;text-decoration:none">Naitik Soni</a> (<a href="mailto:${senderEmail}" style="color:#007AFF">${senderEmail}</a>)
+          </div>
+        </div>
+      `;
+
+      const deliveryResult = await deliverMail({
+        fromName: "Naitik Soni",
+        to: to.trim(),
+        replyTo: senderEmail,
+        subject: mailSubject,
+        text: body.trim(),
+        html,
+      });
+      deliveryId = deliveryResult.messageId;
+      sentMethod = deliveryResult.via || "Server Delivery";
+    }
 
     const newSentMsg = await Message.create({
       name: to.trim().split("@")[0],
@@ -2065,19 +2136,19 @@ app.post("/api/admin/send-mail", auth, async (req, res) => {
           reply: body.trim(),
           repliedAt: new Date(),
           sender: "Naitik Soni <naitik.infosec@gmail.com>",
-          messageId: info.messageId,
+          messageId: deliveryId || `sent-${Date.now()}`,
         }
       ],
       createdAt: new Date(),
     });
 
-    console.log(`✅ Real direct email sent to ${to} via Gmail SMTP (Message ID: ${info.messageId})`);
+    console.log(`✅ Real direct email sent to ${to} via ${sentMethod} (Message ID: ${deliveryId})`);
     res.json({
       success: true,
       message: `Email delivered to ${to}`,
       deliveredTo: to.trim(),
-      sentVia: "Gmail SMTP",
-      messageId: info.messageId,
+      sentVia: sentMethod,
+      messageId: deliveryId,
       sentMsg: newSentMsg,
     });
   } catch (err) {
@@ -3464,8 +3535,8 @@ async function sendDailyAdminReport() {
       </div>
     </div>
   </div>`;
-  await transporter.sendMail({
-    from: '"NS.ai Reports" <naitik.infosec@gmail.com>',
+  await deliverMail({
+    fromName: "NS.ai Reports",
     to: process.env.REPORT_EMAIL || "naitik.infosec@gmail.com",
     subject: `NS.ai | Executive Portfolio Intelligence Report - ${new Date().toLocaleDateString("en-IN")}`,
     html,
