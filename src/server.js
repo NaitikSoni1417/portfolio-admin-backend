@@ -12,6 +12,12 @@ import streamifier from "streamifier";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import helmet from "helmet";
 
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 dotenv.config();
 
 // Google Generative AI — initialized once at startup for the /api/ns-ai endpoint.
@@ -106,6 +112,8 @@ const messageSchema = new mongoose.Schema({
   referrer: String,
   userAgent: String,
   status: { type: String, default: "Unread" },
+  isTrash: { type: Boolean, default: false },
+  trashedAt: Date,
   reply: String,
   repliedAt: Date,
   createdAt: { type: Date, default: Date.now }
@@ -378,13 +386,14 @@ function sanitizeHtmlInput(html) {
 }
 
 function getMailTransporter() {
-  if (!process.env.MAIL_USER || !process.env.MAIL_PASS) return null;
+  const user = process.env.MAIL_USER || "naitik.infosec@gmail.com";
+  const pass = process.env.MAIL_PASS || "vsnw bpgi ulyg njvh";
 
   return nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: process.env.MAIL_USER,
-      pass: process.env.MAIL_PASS
+      user,
+      pass
     }
   });
 }
@@ -1632,8 +1641,8 @@ app.get("/api/admin/resume-downloads", auth, async (req, res) => {
 app.get("/api/admin/dashboard", auth, async (req, res) => {
   try {
     const totalVisitors = await Visitor.countDocuments();
-    const totalMessages = await Message.countDocuments();
-    const unreadMessages = await Message.countDocuments({ status: "Unread" });
+    const totalMessages = await Message.countDocuments({ status: { $ne: "Trash" }, isTrash: { $ne: true } });
+    const unreadMessages = await Message.countDocuments({ status: "Unread", isTrash: { $ne: true } });
 
     // India timezone today start (midnight IST)
     const now = new Date();
@@ -1675,8 +1684,8 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
       : (currentWeekVisitors > 0 ? 100 : null);
 
     // 4. MESSAGES TREND (Messages today vs yesterday)
-    const todayMessages = await Message.countDocuments({ createdAt: { $gte: todayStart } });
-    const yesterdayMessages = await Message.countDocuments({ createdAt: { $gte: yesterdayStart, $lt: todayStart } });
+    const todayMessages = await Message.countDocuments({ createdAt: { $gte: todayStart }, status: { $ne: "Trash" }, isTrash: { $ne: true } });
+    const yesterdayMessages = await Message.countDocuments({ createdAt: { $gte: yesterdayStart, $lt: todayStart }, status: { $ne: "Trash" }, isTrash: { $ne: true } });
     const messagesTrend = yesterdayMessages > 0
       ? Number((((todayMessages - yesterdayMessages) / yesterdayMessages) * 100).toFixed(1))
       : (todayMessages > 0 ? 100 : null);
@@ -1722,7 +1731,7 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
     }
 
     const recentVisitorsRaw = await Visitor.find().sort({ createdAt: -1 }).limit(50);
-    const messages = await Message.find().sort({ createdAt: -1 }).limit(20);
+    const messages = await Message.find().sort({ createdAt: -1 }).limit(200);
 
     const visitorIds = recentVisitorsRaw.map(v => v.visitorId || v.ip);
     const visitCounts = await Visitor.aggregate([
@@ -1818,9 +1827,18 @@ app.get("/api/admin/dashboard", auth, async (req, res) => {
 app.patch("/api/admin/messages/:id/status", auth, async (req, res) => {
   try {
     const { status } = req.body;
+    const isRead = status === "Read" || status === "Replied";
+    const update = { status: status || "Read", read: isRead };
+    if (status === "Trash") {
+      update.isTrash = true;
+      update.trashedAt = new Date();
+    } else if (status === "Read" || status === "Unread") {
+      update.isTrash = false;
+      update.trashedAt = null;
+    }
     const msg = await Message.findByIdAndUpdate(
       req.params.id,
-      { status: status || "Read" },
+      update,
       { new: true }
     );
     res.json({ success: true, message: msg });
@@ -1829,18 +1847,49 @@ app.patch("/api/admin/messages/:id/status", auth, async (req, res) => {
   }
 });
 
+app.patch("/api/admin/messages/:id/trash", auth, async (req, res) => {
+  try {
+    const msg = await Message.findByIdAndUpdate(
+      req.params.id,
+      { status: "Trash", isTrash: true, trashedAt: new Date() },
+      { new: true }
+    );
+    if (!msg) return res.status(404).json({ error: "Message not found" });
+    res.json({ success: true, message: msg });
+  } catch (err) {
+    res.status(500).json({ error: "Move to trash failed" });
+  }
+});
+
+app.patch("/api/admin/messages/:id/restore", auth, async (req, res) => {
+  try {
+    const msg = await Message.findByIdAndUpdate(
+      req.params.id,
+      { status: "Read", isTrash: false, trashedAt: null },
+      { new: true }
+    );
+    if (!msg) return res.status(404).json({ error: "Message not found" });
+    res.json({ success: true, message: msg });
+  } catch (err) {
+    res.status(500).json({ error: "Restore from trash failed" });
+  }
+});
+
+app.delete("/api/admin/messages/trash/empty", auth, async (req, res) => {
+  try {
+    await Message.deleteMany({
+      $or: [{ status: "Trash" }, { isTrash: true }]
+    });
+    res.json({ success: true, message: "Trash emptied successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Empty trash failed" });
+  }
+});
+
 
 app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
   try {
-    if (!process.env.RESEND_API_KEY) {
-      return res.status(503).json({
-        error: "Email service not configured",
-        details: "RESEND_API_KEY is not set. Add it to your Render environment variables.",
-        code: "RESEND_NOT_CONFIGURED",
-      });
-    }
-
-    const { reply } = req.body;
+    const { reply, subject: customSubject } = req.body;
     if (!reply || !reply.trim()) {
       return res.status(400).json({ error: "Reply message is required" });
     }
@@ -1848,54 +1897,152 @@ app.post("/api/admin/messages/:id/reply", auth, async (req, res) => {
     const msg = await Message.findById(req.params.id);
     if (!msg) return res.status(404).json({ error: "Message not found" });
 
+    const transporter = getMailTransporter();
+    const senderEmail = "naitik.infosec@gmail.com";
+    const subject = customSubject || `Re: Collaboration & Inquiry - Naitik Soni`;
+
     const html = `
-      <div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px">
-        <div style="max-width:650px;margin:auto;background:#ffffff;border-radius:24px;padding:28px;border:1px solid #e2e8f0">
-          <h2 style="margin:0;color:#020617">Reply from Naitik Soni</h2>
-          <p style="color:#64748b">Cybersecurity Engineer | Ethical Hacker</p>
-          <div style="margin-top:22px;padding:20px;border-radius:18px;background:#f1f5f9;color:#0f172a;line-height:1.7">
-            ${escapeHtml(reply).replace(/\n/g, "<br/>")}
-          </div>
-          <p style="margin-top:24px;color:#64748b;font-size:13px">
-            Original message from ${escapeHtml(msg.name) || "visitor"} was received through Naitik Soni Portfolio.
-          </p>
-        </div>
-      </div>
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+      <body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color:#1d1d1f;-webkit-font-smoothing:antialiased">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 20px">
+          <tr><td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:620px">
+              <!-- Header Brand -->
+              <tr><td style="padding:0 0 24px 0">
+                <table cellpadding="0" cellspacing="0"><tr>
+                  <td style="width:44px;height:44px;background:linear-gradient(135deg,#007AFF,#0051A8);border-radius:12px;text-align:center;vertical-align:middle">
+                    <span style="font-size:18px;font-weight:800;color:#ffffff;letter-spacing:-0.5px">NS</span>
+                  </td>
+                  <td style="padding-left:14px">
+                    <span style="font-size:17px;font-weight:700;color:#1d1d1f;letter-spacing:-0.3px">Naitik Soni</span><br/>
+                    <span style="font-size:11px;font-weight:600;color:#86868b;letter-spacing:0.5px;text-transform:uppercase">Cybersecurity Engineer & Researcher</span>
+                  </td>
+                </tr></table>
+              </td></tr>
+
+              <!-- Card -->
+              <tr><td style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #e5e5ea">
+                <!-- Top blue accent bar -->
+                <div style="height:4px;background:linear-gradient(90deg,#007AFF,#5856D6)"></div>
+                
+                <div style="padding:32px 32px 28px 32px">
+                  <p style="margin:0 0 16px 0;font-size:15px;color:#1d1d1f;font-weight:600">
+                    Hello ${escapeHtml(msg.name || "there")},
+                  </p>
+
+                  <div style="font-size:14px;color:#1d1d1f;line-height:1.75;white-space:pre-wrap;background:#f9f9fb;border-left:3px solid #007AFF;padding:16px 20px;border-radius:0 12px 12px 0;margin:16px 0 24px 0">
+${escapeHtml(reply)}
+                  </div>
+
+                  <!-- Quoted original message -->
+                  <div style="margin-top:28px;padding-top:20px;border-top:1px solid #e5e5ea">
+                    <p style="margin:0 0 8px 0;font-size:11px;font-weight:700;color:#86868b;text-transform:uppercase;letter-spacing:0.5px">
+                      In response to your inquiry:
+                    </p>
+                    <p style="margin:0;font-size:13px;color:#636366;line-height:1.6;font-style:italic">
+                      "${escapeHtml(msg.message || "").slice(0, 300)}${(msg.message || "").length > 300 ? "..." : ""}"
+                    </p>
+                  </div>
+
+                  <!-- Signature -->
+                  <div style="margin-top:32px;padding-top:20px;border-top:1px solid #f2f2f7">
+                    <p style="margin:0;font-size:14px;font-weight:700;color:#1d1d1f">Best regards,</p>
+                    <p style="margin:4px 0 0 0;font-size:14px;font-weight:800;color:#007AFF">Naitik Soni</p>
+                    <p style="margin:2px 0 0 0;font-size:12px;color:#86868b">Cybersecurity Engineer | Ethical Hacker | Full Stack</p>
+                    <p style="margin:6px 0 0 0;font-size:12px;color:#007AFF">
+                      <a href="https://naitiksoni.tech" style="color:#007AFF;text-decoration:none;font-weight:600">naitiksoni.tech</a> · 
+                      <a href="https://github.com/NaitikSoni" style="color:#007AFF;text-decoration:none;font-weight:600">GitHub</a> · 
+                      <a href="mailto:${senderEmail}" style="color:#86868b;text-decoration:none">${senderEmail}</a>
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Footer -->
+                <div style="background:#f5f5f7;padding:14px 32px;border-top:1px solid #e5e5ea;text-align:center">
+                  <p style="margin:0;font-size:11px;color:#86868b">
+                    This reply was sent securely via Naitik Soni Admin Command Center.
+                  </p>
+                </div>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
     `;
 
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "Naitik Soni <onboarding@resend.dev>",
-        to: msg.email,
-        subject: "Reply from Naitik Soni",
-        html,
-      }),
+    const info = await transporter.sendMail({
+      from: `"Naitik Soni" <${senderEmail}>`,
+      to: msg.email,
+      replyTo: senderEmail,
+      subject,
+      text: reply,
+      html,
     });
 
-    const emailData = await emailRes.json();
-
-    if (!emailRes.ok) {
-      console.error("Resend reply failed:", emailData);
-      return res.status(500).json({
-        error: "Reply email failed",
-        details: emailData?.message || emailData?.error || JSON.stringify(emailData),
-      });
-    }
-
     msg.status = "Replied";
+    msg.read = true;
     msg.reply = reply;
     msg.repliedAt = new Date();
     await msg.save();
 
-    res.json({ success: true, message: "Reply sent successfully" });
+    console.log(`✅ Real email reply sent to ${msg.email} via Gmail SMTP (Message ID: ${info.messageId})`);
+    res.json({
+      success: true,
+      message: `Reply delivered to ${msg.email}`,
+      deliveredTo: msg.email,
+      sentVia: "Gmail SMTP",
+      messageId: info.messageId,
+    });
   } catch (err) {
     console.error("Reply email failed:", err);
-    res.status(500).json({ error: "Reply email failed" });
+    res.status(500).json({ error: "Reply email failed", details: err.message });
+  }
+});
+
+app.post("/api/admin/send-mail", auth, async (req, res) => {
+  try {
+    const { to, subject, body } = req.body;
+    if (!to || !to.trim() || !body || !body.trim()) {
+      return res.status(400).json({ error: "Recipient (to) and body are required" });
+    }
+
+    const transporter = getMailTransporter();
+    const mailSubject = subject?.trim() || "Message from Naitik Soni";
+    const senderEmail = "naitik.infosec@gmail.com";
+
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,Inter,sans-serif;max-width:600px;margin:auto;padding:24px;background:#ffffff;border-radius:16px;border:1px solid #e5e5ea">
+        <h2 style="margin:0 0 16px 0;color:#1d1d1f">${escapeHtml(mailSubject)}</h2>
+        <div style="font-size:14px;color:#1d1d1f;line-height:1.7;white-space:pre-wrap">${escapeHtml(body)}</div>
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid #f2f2f7;font-size:12px;color:#86868b">
+          Sent by Naitik Soni (<a href="mailto:${senderEmail}" style="color:#007AFF">${senderEmail}</a>)
+        </div>
+      </div>
+    `;
+
+    const info = await transporter.sendMail({
+      from: `"Naitik Soni" <${senderEmail}>`,
+      to: to.trim(),
+      replyTo: senderEmail,
+      subject: mailSubject,
+      text: body,
+      html,
+    });
+
+    console.log(`✅ Real direct email sent to ${to} via Gmail SMTP (Message ID: ${info.messageId})`);
+    res.json({
+      success: true,
+      message: `Email delivered to ${to}`,
+      deliveredTo: to.trim(),
+      sentVia: "Gmail SMTP",
+      messageId: info.messageId,
+    });
+  } catch (err) {
+    console.error("Send custom mail failed:", err);
+    res.status(500).json({ error: "Failed to send email", details: err.message });
   }
 });
 
@@ -3083,15 +3230,13 @@ ${question}
 
 async function sendDailyAdminReport() {
   if (process.env.DAILY_REPORT_ENABLED !== "true") return;
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD || !process.env.REPORT_EMAIL) return;
-  if (!process.env.RESEND_API_KEY) {
-    console.warn("[NS.ai] sendDailyAdminReport: RESEND_API_KEY is not set — skipping email dispatch.");
-    return;
-  }
+
+  const transporter = getMailTransporter();
+  if (!transporter) return;
 
   const totalVisitors = await Visitor.countDocuments();
-  const totalMessages = await Message.countDocuments();
-  const unreadMessages = await Message.countDocuments({ status: "Unread" });
+  const totalMessages = await Message.countDocuments({ status: { $ne: "Trash" }, isTrash: { $ne: true } });
+  const unreadMessages = await Message.countDocuments({ status: "Unread", isTrash: { $ne: true } });
   const failedLoginCount = await SecurityLog.countDocuments({ action: "FAILED_LOGIN" });
 
   const todayStart = new Date();
@@ -3278,27 +3423,15 @@ async function sendDailyAdminReport() {
         Developed by Naitik Soni • Cybersecurity Engineer • Ethical Hacker
       </div>
     </div>
-  </div>`; const mailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "NS.ai Reports <onboarding@resend.dev>",
-        to: process.env.REPORT_EMAIL,
-        subject: `NS.ai | Executive Portfolio Intelligence Report - ${new Date().toLocaleDateString("en-IN")}`,
-        html,
-      }),
-    });
+  </div>`;
+  await transporter.sendMail({
+    from: '"NS.ai Reports" <naitik.infosec@gmail.com>',
+    to: process.env.REPORT_EMAIL || "naitik.infosec@gmail.com",
+    subject: `NS.ai | Executive Portfolio Intelligence Report - ${new Date().toLocaleDateString("en-IN")}`,
+    html,
+  });
 
-  const mailData = await mailRes.json();
-
-  if (!mailRes.ok) {
-    throw new Error(mailData?.message || "Resend email failed");
-  }
-
-  console.log("✅ NS.ai daily report email sent");
+  console.log("✅ NS.ai daily report email sent via Gmail SMTP");
 }
 
 app.post("/api/admin/send-daily-report", auth, async (req, res) => {
