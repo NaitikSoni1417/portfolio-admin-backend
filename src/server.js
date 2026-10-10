@@ -12,6 +12,10 @@ import streamifier from "streamifier";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import helmet from "helmet";
 
+import { auth } from "./middleware/auth.js";
+import { createMongoRepo } from "./visitorRepo.js";
+import { createVisitorRouter } from "./visitorRoutes.js";
+
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -51,7 +55,7 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization", "X-Public-IP"],
-  exposedHeaders: ["Content-Disposition"]
+  exposedHeaders: ["Content-Disposition", "X-Export-Row-Count", "X-Export-Truncated"]
 }));
 
 app.use(express.json({ limit: "1mb" }));
@@ -86,6 +90,17 @@ const visitorSchema = new mongoose.Schema({
   attemptedKey: String,
   createdAt: { type: Date, default: Date.now }
 });
+
+// Visitor Intelligence indexes — additive only (existing documents untouched).
+// Built by Mongoose on connect via autoIndex; never drops or rebuilds data.
+visitorSchema.index({ createdAt: -1 });
+visitorSchema.index({ ip: 1, createdAt: -1 });
+visitorSchema.index({ visitorId: 1, createdAt: -1 });
+visitorSchema.index({ country: 1, createdAt: -1 });
+visitorSchema.index({ device: 1 });
+visitorSchema.index({ browser: 1 });
+visitorSchema.index({ page: 1 });
+visitorSchema.index({ isp: 1 });
 
 const messageSchema = new mongoose.Schema({
   name: String,
@@ -130,6 +145,28 @@ const messageSchema = new mongoose.Schema({
 });
 
 const Visitor = mongoose.model("Visitor", visitorSchema);
+
+// Admin-curated bookmarks for network endpoints. Kept in a separate collection
+// so removing a bookmark can never touch visitor history, and a single IP can
+// carry its own label/notes without duplicating visitor documents.
+const ipBookmarkSchema = new mongoose.Schema({
+  ip: { type: String, required: true, unique: true },
+  label: { type: String, default: "" },
+  notes: { type: String, default: "" },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+const IpBookmark = mongoose.model("IpBookmark", ipBookmarkSchema);
+
+// Persisted review state (status + admin notes) for computed traffic anomalies.
+// Anomalies themselves are derived on read; only the review is stored.
+const anomalyReviewSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true },
+  status: { type: String, default: "open", enum: ["open", "in_review", "resolved", "false_positive"] },
+  notes: { type: String, default: "" },
+  updatedAt: { type: Date, default: Date.now }
+});
+const AnomalyReview = mongoose.model("AnomalyReview", anomalyReviewSchema);
 
 const resumeDownloadSchema = new mongoose.Schema({
   ip: String,
@@ -967,17 +1004,8 @@ async function blockGuard(req, res, next) {
 
 app.use("/api", blockGuard);
 
-function auth(req, res, next) {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (!token) return res.status(401).json({ error: "No token" });
-
-  try {
-    jwt.verify(token, process.env.JWT_SECRET);
-    next();
-  } catch {
-    return res.status(401).json({ error: "Invalid token" });
-  }
-}
+// `auth` now lives in ./middleware/auth.js so the identical implementation can
+// be exercised by the test suite. All existing routes keep using the same name.
 
 function cleanIp(ip = "") {
   if (!ip) return "";
@@ -2316,6 +2344,12 @@ app.delete("/api/admin/reset-data", auth, async (req, res) => {
     res.status(500).json({ error: "Reset data failed" });
   }
 });
+
+// ── NS Visitor Intelligence Center ───────────────────────────────────────────
+// Mounted before the legacy DELETE handler; the router defines no DELETE on the
+// collection root, so `DELETE /api/admin/visitors` still reaches it below.
+const visitorRepo = createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyReview });
+app.use("/api/admin/visitors", createVisitorRouter({ auth, repo: visitorRepo }));
 
 app.delete("/api/admin/visitors", auth, async (req, res) => {
   await Visitor.deleteMany({});
