@@ -166,6 +166,23 @@ const ipBookmarkSchema = new mongoose.Schema({
 });
 const IpBookmark = mongoose.model("IpBookmark", ipBookmarkSchema);
 
+// Admin-assigned human-readable labels for IP addresses (IP Identity Manager).
+// A label is a personal annotation — never a trust/ownership/security verdict.
+// Kept in a separate collection so label changes can never touch visitor
+// records, bookmarks or security logs.
+const ipLabelSchema = new mongoose.Schema({
+  normalizedIp: { type: String, required: true, unique: true },
+  displayName: { type: String, required: true },
+  category: { type: String, required: true },
+  hostname: { type: String, default: "" },
+  note: { type: String, default: "" },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+ipLabelSchema.index({ category: 1 });
+ipLabelSchema.index({ displayName: 1 });
+const IpLabel = mongoose.model("IpLabel", ipLabelSchema);
+
 // Persisted review state (status + admin notes) for computed traffic anomalies.
 // Anomalies themselves are derived on read; only the review is stored.
 const anomalyReviewSchema = new mongoose.Schema({
@@ -2368,7 +2385,7 @@ app.delete("/api/admin/reset-data", auth, async (req, res) => {
 // ── NS Visitor Intelligence Center ───────────────────────────────────────────
 // Mounted before the legacy DELETE handler; the router defines no DELETE on the
 // collection root, so `DELETE /api/admin/visitors` still reaches it below.
-const visitorRepo = createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyReview });
+const visitorRepo = createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyReview, IpLabel });
 app.use("/api/admin/visitors", createVisitorRouter({ auth, repo: visitorRepo }));
 
 app.delete("/api/admin/visitors", auth, async (req, res) => {

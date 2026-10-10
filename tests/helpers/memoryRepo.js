@@ -5,6 +5,7 @@
  */
 
 import { matchesFilter } from "./matchFilter.js";
+import { normalizeIp } from "../../src/visitorQuery.js";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -90,6 +91,7 @@ export function createMemoryRepo(seed = {}) {
   }));
   const bookmarks = (seed.bookmarks || []).map((b) => ({ ...b }));
   const reviews = (seed.reviews || []).map((r) => ({ ...r }));
+  const ipLabels = (seed.ipLabels || []).map((l) => ({ ...l }));
 
   const ensure = (list, patch) => Object.assign({ createdAt: new Date() }, list, patch);
 
@@ -106,6 +108,37 @@ export function createMemoryRepo(seed = {}) {
     async exportAll({ filter, sort, cap }) {
       const matched = visitors.filter((d) => matchesFilter(d, filter));
       return clone(sortDocs(matched, sort).slice(0, cap));
+    },
+
+    async count({ filter }) {
+      return visitors.filter((d) => matchesFilter(d, filter)).length;
+    },
+
+    /**
+     * Streaming export — mirrors the Mongo cursor contract. Yields cloned
+     * docs one at a time; the caller closes the handle when done.
+     */
+    exportCursor({ filter, sort, cap }) {
+      const rows = sortDocs(visitors.filter((d) => matchesFilter(d, filter)), sort).slice(0, cap);
+      let index = 0;
+      async function* stream() {
+        while (index < rows.length) {
+          const row = rows[index];
+          index += 1;
+          yield clone(row);
+        }
+      }
+      return { stream, close: async () => {} };
+    },
+
+    async exportIps({ filter, cap }) {
+      const ips = new Set();
+      const matched = sortDocs(visitors.filter((d) => matchesFilter(d, filter)), { createdAt: -1 });
+      for (const doc of matched) {
+        if (doc.ip) ips.add(doc.ip);
+        if (ips.size >= cap) break;
+      }
+      return [...ips];
     },
 
     async facet({ filter, field, limit, fallbackField }) {
@@ -401,6 +434,69 @@ export function createMemoryRepo(seed = {}) {
           reviews.push(row);
         }
         return clone(row);
+      },
+    },
+
+    ipLabels: {
+      async all() {
+        return clone(ipLabels).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      },
+      async list({ filter, skip, limit }) {
+        const matched = ipLabels.filter((d) => matchesFilter(d, filter));
+        const sorted = [...matched].sort(
+          (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+        );
+        return {
+          items: clone(sorted.slice(skip, skip + limit)),
+          total: sorted.length,
+        };
+      },
+      async get(id) {
+        const found = ipLabels.find((l) => l._id === id);
+        return found ? clone(found) : null;
+      },
+      async getByIp(normalizedIp) {
+        const found = ipLabels.find((l) => l.normalizedIp === normalizedIp);
+        return found ? clone(found) : null;
+      },
+      async create({ normalizedIp, displayName, category, hostname, note }) {
+        const now = new Date();
+        seq += 1;
+        const row = {
+          // Hex-styled id that passes the routes' isValidObjectId check.
+          _id: seq.toString(16).padStart(24, "0"),
+          normalizedIp,
+          displayName,
+          category,
+          hostname: hostname || "",
+          note: note || "",
+          createdAt: now,
+          updatedAt: now,
+        };
+        ipLabels.push(row);
+        return clone(row);
+      },
+      async update(id, patch) {
+        const row = ipLabels.find((l) => l._id === id);
+        if (!row) return null;
+        Object.assign(row, patch, { updatedAt: new Date() });
+        return clone(row);
+      },
+      async remove(id) {
+        const index = ipLabels.findIndex((l) => l._id === id);
+        if (index === -1) return false;
+        ipLabels.splice(index, 1);
+        return true;
+      },
+      async mapForIps(ips = []) {
+        const normalized = [...new Set(ips.map((ip) => normalizeIp(ip)).filter(Boolean))];
+        return ipLabels
+          .filter((l) => normalized.includes(l.normalizedIp))
+          .map((l) => ({
+            normalizedIp: l.normalizedIp,
+            displayName: l.displayName,
+            category: l.category,
+          }));
       },
     },
   };

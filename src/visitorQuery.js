@@ -34,6 +34,23 @@ export const ANOMALY_TYPES = [
 export const ANOMALY_PAGE_SIZES = [10, 25, 50];
 export const ANOMALY_DEFAULT_PAGE_SIZE = 25;
 
+/** Admin IP-label fields (IP Identity Manager). */
+export const IP_LABEL_NAME_MAX = 80;
+export const IP_LABEL_HOSTNAME_MAX = 253;
+export const IP_LABEL_NOTE_MAX = 600;
+/** Predefined categories — "Other" is a category, not free-text. */
+export const IP_LABEL_CATEGORIES = [
+  "College",
+  "Personal",
+  "Friend",
+  "Work",
+  "Server",
+  "Research",
+  "Trusted",
+  "Unknown",
+  "Other",
+];
+
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
 function str(value) {
@@ -380,12 +397,17 @@ export function pageWindow(page, totalPages, span = 2) {
 
 /**
  * Spreadsheet formula injection guard (OWASP): anything that a spreadsheet would
- * parse as a formula gets a leading apostrophe. Plain numbers keep their value.
+ * parse as a formula gets a leading apostrophe. Leading whitespace and control
+ * characters are stripped for the *check* (Excel/Sheets trim before parsing),
+ * but the original cell content is preserved — only the guard prefix is added.
+ * Plain numbers keep their value.
  */
 export function sanitizeCsvCell(value) {
   let cell = value === undefined || value === null ? "" : String(value);
   cell = cell.replace(CONTROL_CHARS, "");
-  if (/^[=+\-@\t\r]/.test(cell) && !/^[+-]?\d+(\.\d+)?$/.test(cell)) {
+  // Check the form a spreadsheet would see: leading spaces/tabs trimmed.
+  const probe = cell.replace(/^[ \t\r\n]+/, "");
+  if (/^[=+\-@]/.test(probe) && !/^[+-]?\d+(\.\d+)?$/.test(probe)) {
     cell = `'${cell}`;
   }
   return cell;
@@ -397,11 +419,16 @@ function csvQuote(value) {
   return cell;
 }
 
+/** One CSV line (no trailing CRLF) — used by the streaming exporter. */
+export function toCsvLine(values) {
+  return (values || []).map(csvQuote).join(",");
+}
+
 /** RFC4180 CSV, CRLF line endings, formula-safe. */
 export function toCsv(rows, headers) {
   const lines = [];
-  if (headers && headers.length) lines.push(headers.map(csvQuote).join(","));
-  for (const row of rows || []) lines.push((row || []).map(csvQuote).join(","));
+  if (headers && headers.length) lines.push(toCsvLine(headers));
+  for (const row of rows || []) lines.push(toCsvLine(row));
   return lines.join("\r\n");
 }
 
@@ -575,6 +602,113 @@ export function parseAnomalyFilters(query = {}) {
   }
 
   return { ok: errors.length === 0, errors, severity, type };
+}
+
+/**
+ * Basic hostname/domain syntax for the optional IP-label hostname field.
+ * Accepts a bare hostname ("nas.local") or a FQDN ("server.example.com");
+ * rejects scheme, path, port and whitespace — this is an annotation field,
+ * not a URL collector.
+ */
+export function isValidHostname(value) {
+  const host = str(value);
+  if (host === "" || host.length > IP_LABEL_HOSTNAME_MAX) return false;
+  if (/[\s/:?#@]/.test(host)) return false;
+  const labels = host.split(".");
+  if (labels.length < 1 || labels.length > 4) return false;
+  return labels.every(
+    (label) => label.length >= 1 && label.length <= 63 && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i.test(label)
+  );
+}
+
+/** Validate a create request for an IP Identity Manager label. */
+export function validateIpLabelInput(body = {}) {
+  const errors = [];
+  const ip = str(body.ip);
+  if (!isValidIp(ip)) errors.push("ip must be a valid IPv4 or IPv6 address");
+
+  const displayName = str(body.displayName);
+  if (!displayName) errors.push("displayName is required");
+  else if (displayName.length > IP_LABEL_NAME_MAX) {
+    errors.push(`displayName must be ${IP_LABEL_NAME_MAX} characters or fewer`);
+  }
+
+  const category = str(body.category);
+  if (!category) errors.push("category is required");
+  else if (!IP_LABEL_CATEGORIES.includes(category)) {
+    errors.push(`category must be one of ${IP_LABEL_CATEGORIES.join(", ")}`);
+  }
+
+  const hostname = str(body.hostname);
+  if (hostname && !isValidHostname(hostname)) {
+    errors.push("hostname must be a valid hostname or domain (no scheme, path or port)");
+  } else if (hostname.length > IP_LABEL_HOSTNAME_MAX) {
+    errors.push(`hostname must be ${IP_LABEL_HOSTNAME_MAX} characters or fewer`);
+  }
+
+  if (str(body.note).length > IP_LABEL_NOTE_MAX) {
+    errors.push(`note must be ${IP_LABEL_NOTE_MAX} characters or fewer`);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    value: {
+      ip,
+      displayName: sanitizeText(body.displayName, IP_LABEL_NAME_MAX),
+      category: sanitizeText(body.category, 40),
+      hostname: sanitizeText(body.hostname, IP_LABEL_HOSTNAME_MAX),
+      note: sanitizeText(body.note, IP_LABEL_NOTE_MAX),
+    },
+  };
+}
+
+/** Validate a partial update; only provided fields are touched. */
+export function validateIpLabelUpdate(body = {}) {
+  const errors = [];
+  const value = {};
+
+  if (body.ip !== undefined) {
+    const ip = str(body.ip);
+    if (!isValidIp(ip)) errors.push("ip must be a valid IPv4 or IPv6 address");
+    else value.ip = ip;
+  }
+  if (body.displayName !== undefined) {
+    const name = str(body.displayName);
+    if (!name) errors.push("displayName is required");
+    else if (name.length > IP_LABEL_NAME_MAX) {
+      errors.push(`displayName must be ${IP_LABEL_NAME_MAX} characters or fewer`);
+    } else value.displayName = sanitizeText(body.displayName, IP_LABEL_NAME_MAX);
+  }
+  if (body.category !== undefined) {
+    const category = str(body.category);
+    if (!category) errors.push("category is required");
+    else if (!IP_LABEL_CATEGORIES.includes(category)) {
+      errors.push(`category must be one of ${IP_LABEL_CATEGORIES.join(", ")}`);
+    } else value.category = sanitizeText(body.category, 40);
+  }
+  if (body.hostname !== undefined) {
+    const host = str(body.hostname);
+    if (host && !isValidHostname(host)) {
+      errors.push("hostname must be a valid hostname or domain (no scheme, path or port)");
+    } else value.hostname = sanitizeText(body.hostname, IP_LABEL_HOSTNAME_MAX);
+  }
+  if (body.note !== undefined) {
+    if (str(body.note).length > IP_LABEL_NOTE_MAX) {
+      errors.push(`note must be ${IP_LABEL_NOTE_MAX} characters or fewer`);
+    } else value.note = sanitizeText(body.note, IP_LABEL_NOTE_MAX);
+  }
+
+  if (errors.length === 0 && Object.keys(value).length === 0) {
+    errors.push("provide at least one field to update");
+  }
+
+  return { ok: errors.length === 0, errors, value };
+}
+
+/** Validate a MongoDB ObjectId path param without pulling in Mongoose. */
+export function isValidObjectId(value) {
+  return /^[0-9a-f]{24}$/i.test(String(value ?? ""));
 }
 
 /** Stable, URL-safe key for a persisted review record. */

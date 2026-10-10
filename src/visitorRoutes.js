@@ -9,10 +9,13 @@ import {
   parseAnomalyFilters,
   formatRangeLabel,
   totalPagesFor,
-  toCsv,
+  toCsvLine,
   validateBookmarkInput,
   validateBookmarkUpdate,
   validateReviewInput,
+  validateIpLabelInput,
+  validateIpLabelUpdate,
+  isValidObjectId,
   anomalyKey,
   isValidIp,
   normalizeIp,
@@ -25,6 +28,7 @@ import {
   ANOMALY_TYPES,
   ANOMALY_PAGE_SIZES,
   ANOMALY_DEFAULT_PAGE_SIZE,
+  IP_LABEL_CATEGORIES,
 } from "./visitorQuery.js";
 import { mergeFacetBy, mergeTrafficSources } from "./visitorReferrer.js";
 import {
@@ -367,8 +371,13 @@ export function createVisitorRouter({ auth, repo }) {
       }
 
       const ips = [...new Set(items.map((v) => v.ip).filter(Boolean))];
-      const [stats, bookmarkSet] = await Promise.all([repo.visitStats({ ips }), loadBookmarks()]);
+      const [stats, bookmarkSet, labelRows] = await Promise.all([
+        repo.visitStats({ ips }),
+        loadBookmarks(),
+        repo.ipLabels.mapForIps(ips),
+      ]);
       const visitMap = new Map(stats.map((s) => [s.ip, s.visits]));
+      const labelMap = new Map(labelRows.map((l) => [l.normalizedIp, l]));
 
       const enriched = items.map((v) => {
         const visits = visitMap.get(v.ip) || 1;
@@ -377,6 +386,9 @@ export function createVisitorRouter({ auth, repo }) {
           visits,
           isReturning: visits > 1,
           bookmarked: bookmarkSet.has(bookmarkKey(v.ip)),
+          // Human label attached only if one was assigned — the raw IP is
+          // never replaced or hidden.
+          ipLabel: labelMap.get(normalizeIp(v.ip)) || null,
         };
       });
 
@@ -398,7 +410,17 @@ export function createVisitorRouter({ auth, repo }) {
   });
 
   // ── GET /api/admin/visitors/export.csv — every matching row, not the page ─
+  //
+  // Rows are streamed from a Mongo cursor and written to the socket as they
+  // arrive, so a 50k-row export never materialises the CSV (or the whole
+  // collection) in memory. Row-count headers are computed up-front via a
+  // count query so they are accurate before the first byte is written.
   router.get("/export.csv", auth, async (req, res) => {
+    let cursorHandle = null;
+    let clientGone = false;
+    const onData = () => { clientGone = true; };
+    req.on("close", onData);
+    req.on("aborted", onData);
     try {
       const parsed = plainQuery(req);
       if (parsed.error) return res.status(400).json({ ok: false, errors: [parsed.error] });
@@ -408,19 +430,10 @@ export function createVisitorRouter({ auth, repo }) {
       const errors = [...filterResult.errors, ...sortResult.errors];
       if (errors.length) return res.status(400).json({ ok: false, errors });
 
-      const docs = await repo.exportAll({
-        filter: filterResult.filter,
-        sort: sortResult.sort,
-        cap: EXPORT_ROW_CAP,
-      });
-      const truncated = docs.length >= EXPORT_ROW_CAP;
-
-      const ips = [...new Set(docs.map((v) => v.ip).filter(Boolean))];
-      const [stats, bookmarkSet] = await Promise.all([
-        ips.length <= 5000 ? repo.visitStats({ ips }) : Promise.resolve([]),
-        loadBookmarks(),
-      ]);
-      const visitMap = new Map(stats.map((s) => [s.ip, s.visits]));
+      const filter = filterResult.filter;
+      const total = await repo.count({ filter });
+      const truncated = total > EXPORT_ROW_CAP;
+      const rowCount = Math.min(total, EXPORT_ROW_CAP);
 
       const headers = [
         "IP",
@@ -443,41 +456,71 @@ export function createVisitorRouter({ auth, repo }) {
         "Visited At",
       ];
 
-      const rows = docs.map((v) => {
-        const visits = visitMap.get(v.ip);
-        return [
-          v.ip,
-          v.city,
-          v.region,
-          v.country,
-          v.isp,
-          v.browser,
-          v.os,
-          v.device,
-          v.page,
-          v.referrer,
-          v.sessionId,
-          v.screen,
-          v.language,
-          v.timezone,
-          visits === undefined ? "" : visits,
-          visits !== undefined && visits > 1 ? "Yes" : "No",
-          bookmarkSet.has(bookmarkKey(v.ip)) ? "Yes" : "No",
-          isoOrNull(v.createdAt),
-        ];
-      });
-
-      const csv = toCsv(rows, headers);
       const stamp = new Date().toISOString().slice(0, 10);
-
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="ns-visitors-${stamp}.csv"`);
-      res.setHeader("X-Export-Row-Count", String(rows.length));
+      res.setHeader("X-Export-Row-Count", String(rowCount));
       res.setHeader("X-Export-Truncated", String(truncated));
-      res.send(csv);
+      res.setHeader("Cache-Control", "no-store");
+
+      // Enrichment maps need every matching IP first — a projection-only pass,
+      // never the full documents.
+      const ips = await repo.exportIps({ filter, cap: EXPORT_ROW_CAP });
+      const [stats, bookmarkSet] = await Promise.all([
+        ips.length <= 5000 ? repo.visitStats({ ips }) : Promise.resolve([]),
+        loadBookmarks(),
+      ]);
+      const visitMap = new Map(stats.map((s) => [s.ip, s.visits]));
+
+      // Header line first, then one row at a time with backpressure.
+      res.write(`${toCsvLine(headers)}\r\n`);
+
+      cursorHandle = repo.exportCursor({ filter, sort: sortResult.sort, cap: EXPORT_ROW_CAP });
+      for await (const doc of cursorHandle.stream()) {
+        if (clientGone || res.writableEnded || res.destroyed) break;
+        const visits = visitMap.get(doc.ip);
+        const line = toCsvLine([
+          doc.ip,
+          doc.city,
+          doc.region,
+          doc.country,
+          doc.isp,
+          doc.browser,
+          doc.os,
+          doc.device,
+          doc.page,
+          doc.referrer,
+          doc.sessionId,
+          doc.screen,
+          doc.language,
+          doc.timezone,
+          visits === undefined ? "" : visits,
+          visits !== undefined && visits > 1 ? "Yes" : "No",
+          bookmarkSet.has(bookmarkKey(doc.ip)) ? "Yes" : "No",
+          isoOrNull(doc.createdAt),
+        ]);
+        const canContinue = res.write(`${line}\r\n`);
+        if (!canContinue) {
+          // Respect socket backpressure — wait for the drain before more rows.
+          await new Promise((resolve) => res.once("drain", resolve));
+        }
+      }
+
+      if (!clientGone && !res.writableEnded) res.end();
     } catch (err) {
-      console.error("visitors.export error:", err.message);
-      res.status(500).json({ ok: false, error: "Export failed" });
+      if (res.headersSent) {
+        // Streaming already started — destroy the response so the client sees
+        // a failed download rather than a silently truncated file.
+        console.error("visitors.export stream error:", err.message);
+        res.destroy(err);
+      } else {
+        console.error("visitors.export error:", err.message);
+        res.status(500).json({ ok: false, error: "Export failed" });
+      }
+    } finally {
+      req.off("close", onData);
+      req.off("aborted", onData);
+      if (cursorHandle) await cursorHandle.close();
     }
   });
 
@@ -664,8 +707,12 @@ export function createVisitorRouter({ auth, repo }) {
       const countryFilter = String(parsed.query.country ?? "").trim().toLowerCase();
 
       const bookmarks = await repo.bookmarks.all();
-      const stats = await repo.bookmarkStats({ ips: bookmarks.map((b) => b.ip) });
+      const [stats, labelRows] = await Promise.all([
+        repo.bookmarkStats({ ips: bookmarks.map((b) => b.ip) }),
+        repo.ipLabels.mapForIps(bookmarks.map((b) => b.ip)),
+      ]);
       const statMap = new Map(stats.map((s) => [bookmarkKey(s.ip), s]));
+      const labelMap = new Map(labelRows.map((l) => [l.normalizedIp, l]));
 
       let joined = bookmarks.map((b) => {
         const s = statMap.get(bookmarkKey(b.ip)) || {};
@@ -691,6 +738,7 @@ export function createVisitorRouter({ auth, repo }) {
           lng: s.lng ?? null,
           countries: s.countries || [],
           pages: s.pages || [],
+          ipLabel: labelMap.get(normalizeIp(b.ip)) || null,
         };
       });
 
@@ -950,10 +998,24 @@ export function createVisitorRouter({ auth, repo }) {
       const totalPages = Math.max(1, Math.ceil(total / pagination.limit));
       const page = Math.min(pagination.page, totalPages);
       const start = (page - 1) * pagination.limit;
+      const pageItems = filtered.slice(start, start + pagination.limit);
+
+      // Batch-attach human labels to the evidence IPs on this page only —
+      // one `$in` query, no per-item lookups, no N+1.
+      const evidenceIps = [
+        ...new Set(pageItems.map((item) => item.evidence?.ip).filter(Boolean)),
+      ];
+      const labelRows = evidenceIps.length ? await repo.ipLabels.mapForIps(evidenceIps) : [];
+      const labelMap = new Map(labelRows.map((l) => [l.normalizedIp, l]));
+      const items = pageItems.map((item) => {
+        const ip = item.evidence?.ip;
+        const label = ip ? labelMap.get(normalizeIp(ip)) : null;
+        return label ? { ...item, ipLabel: label } : item;
+      });
 
       res.json({
         ok: true,
-        items: filtered.slice(start, start + pagination.limit),
+        items,
         total,
         page,
         limit: pagination.limit,
@@ -995,6 +1057,174 @@ export function createVisitorRouter({ auth, repo }) {
     } catch (err) {
       console.error("visitors.anomalies.review error:", err.message);
       res.status(500).json({ ok: false, error: "Review update failed" });
+    }
+  });
+
+  // ── IP Identity Manager: admin-assigned labels for IP addresses ───────────
+  //
+  // Labels are personal annotations. They never imply trust, ownership or a
+  // security verdict, and they are stored in their own collection so editing
+  // or deleting a label can never touch visitor data or security logs.
+  // All routes require the same admin auth as the rest of the visitor API.
+
+  // Build an IP-label Mongo/memory filter from query params.
+  const ipLabelFilter = (query) => {
+    const filter = {};
+    const q = String(query.q ?? query.search ?? "").trim();
+    const category = String(query.category ?? "").trim();
+    const ip = String(query.ip ?? "").trim();
+
+    if (q) {
+      // Match the label text, hostname, note or the raw/normalized IP.
+      const needle = q.toLowerCase();
+      const rx = { $regex: needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
+      filter.$or = [
+        { displayName: rx },
+        { hostname: rx },
+        { note: rx },
+        { normalizedIp: rx },
+      ];
+    }
+    if (category && IP_LABEL_CATEGORIES.includes(category)) filter.category = category;
+    if (ip && isValidIp(ip)) filter.normalizedIp = normalizeIp(ip);
+    return filter;
+  };
+
+  // ── GET /api/admin/visitors/ip-labels — list + search + filter ────────────
+  router.get("/ip-labels", auth, async (req, res) => {
+    try {
+      const parsed = plainQuery(req);
+      if (parsed.error) return res.status(400).json({ ok: false, errors: [parsed.error] });
+
+      const pagination = parsePagination(parsed.query, { pageSizes: PAGE_SIZES });
+      if (!pagination.ok) return res.status(400).json({ ok: false, errors: pagination.errors });
+
+      const filter = ipLabelFilter(parsed.query);
+      const { items, total } = await repo.ipLabels.list({
+        filter,
+        skip: pagination.skip,
+        limit: pagination.limit,
+      });
+
+      res.json({
+        ok: true,
+        items,
+        total,
+        page: pagination.page,
+        limit: pagination.limit,
+        totalPages: totalPagesFor(total, pagination.limit),
+        range: formatRangeLabel(total, pagination.page, pagination.limit),
+        pageSizes: PAGE_SIZES,
+        categories: IP_LABEL_CATEGORIES,
+      });
+    } catch (err) {
+      console.error("visitors.ipLabels.list error:", err.message);
+      res.status(500).json({ ok: false, error: "Failed to load IP labels" });
+    }
+  });
+
+  // ── POST /api/admin/visitors/ip-labels — create a label ───────────────────
+  router.post("/ip-labels", auth, async (req, res) => {
+    try {
+      const result = validateIpLabelInput(req.body || {});
+      if (!result.ok) return res.status(400).json({ ok: false, errors: result.errors });
+
+      const normalizedIp = normalizeIp(result.value.ip);
+      const existing = await repo.ipLabels.getByIp(normalizedIp);
+      if (existing) {
+        return res.status(409).json({
+          ok: false,
+          error: "A label already exists for this IP address",
+          existing,
+        });
+      }
+
+      const label = await repo.ipLabels.create({
+        ...result.value,
+        normalizedIp,
+      });
+      res.status(201).json({ ok: true, label });
+    } catch (err) {
+      // Race: two concurrent creates for the same IP. The unique index on
+      // normalizedIp rejects the second — surface it as a clean 409.
+      if (err?.code === 11000) {
+        return res.status(409).json({
+          ok: false,
+          error: "A label already exists for this IP address",
+        });
+      }
+      console.error("visitors.ipLabels.create error:", err.message);
+      res.status(500).json({ ok: false, error: "Create failed" });
+    }
+  });
+
+  // ── GET /api/admin/visitors/ip-labels/:id — one label ─────────────────────
+  router.get("/ip-labels/:id", auth, async (req, res) => {
+    try {
+      if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ ok: false, errors: ["id must be a valid MongoDB ObjectId"] });
+      }
+      const label = await repo.ipLabels.get(req.params.id);
+      if (!label) return res.status(404).json({ ok: false, error: "IP label not found" });
+      res.json({ ok: true, label });
+    } catch (err) {
+      console.error("visitors.ipLabels.get error:", err.message);
+      res.status(500).json({ ok: false, error: "Failed to load IP label" });
+    }
+  });
+
+  // ── PATCH /api/admin/visitors/ip-labels/:id — partial update ──────────────
+  router.patch("/ip-labels/:id", auth, async (req, res) => {
+    try {
+      if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ ok: false, errors: ["id must be a valid MongoDB ObjectId"] });
+      }
+      const result = validateIpLabelUpdate(req.body || {});
+      if (!result.ok) return res.status(400).json({ ok: false, errors: result.errors });
+
+      const existing = await repo.ipLabels.get(req.params.id);
+      if (!existing) return res.status(404).json({ ok: false, error: "IP label not found" });
+
+      // If the IP itself is changing, enforce the unique-address rule.
+      if (result.value.ip !== undefined) {
+        const normalizedIp = normalizeIp(result.value.ip);
+        const clash = await repo.ipLabels.getByIp(normalizedIp);
+        if (clash && clash._id.toString() !== req.params.id) {
+          return res.status(409).json({
+            ok: false,
+            error: "A label already exists for this IP address",
+            existing: clash,
+          });
+        }
+        result.value.normalizedIp = normalizedIp;
+      }
+
+      const label = await repo.ipLabels.update(req.params.id, result.value);
+      res.json({ ok: true, label });
+    } catch (err) {
+      if (err?.code === 11000) {
+        return res.status(409).json({
+          ok: false,
+          error: "A label already exists for this IP address",
+        });
+      }
+      console.error("visitors.ipLabels.update error:", err.message);
+      res.status(500).json({ ok: false, error: "Update failed" });
+    }
+  });
+
+  // ── DELETE /api/admin/visitors/ip-labels/:id — remove a label ─────────────
+  router.delete("/ip-labels/:id", auth, async (req, res) => {
+    try {
+      if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ ok: false, errors: ["id must be a valid MongoDB ObjectId"] });
+      }
+      const removed = await repo.ipLabels.remove(req.params.id);
+      if (!removed) return res.status(404).json({ ok: false, error: "IP label not found" });
+      res.json({ ok: true, removed: true });
+    } catch (err) {
+      console.error("visitors.ipLabels.remove error:", err.message);
+      res.status(500).json({ ok: false, error: "Delete failed" });
     }
   });
 

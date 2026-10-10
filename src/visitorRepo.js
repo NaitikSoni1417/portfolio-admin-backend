@@ -21,7 +21,11 @@
  *   bookmarks: { all, get, upsert, update, remove }
  *   bookmarkHistory({ip, skip, limit})           -> { items, total }
  *   reviews:   { all, upsert }
+ *   ipLabels:  { all, list, get, getByIp, create, update, remove, mapForIps }
+ *   exportCursor({filter, sort, cap})            -> async iterable of docs (streaming)
  */
+
+import { normalizeIp } from "./visitorQuery.js";
 
 const uidExpr = {
   $cond: [{ $eq: [{ $ifNull: ["$visitorId", ""] }, ""] }, "$ip", "$visitorId"],
@@ -43,7 +47,7 @@ function bucketExpr(granularity) {
     : { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } };
 }
 
-export function createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyReview }) {
+export function createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyReview, IpLabel }) {
   return {
     async list({ filter, sort, skip, limit }) {
       const [items, total] = await Promise.all([
@@ -51,6 +55,10 @@ export function createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyRevie
         Visitor.countDocuments(filter),
       ]);
       return { items, total };
+    },
+    /** Row count for a filter — used by the streaming exporter's headers. */
+    async count({ filter }) {
+      return Visitor.countDocuments(filter);
     },
 
     async exportAll({ filter, sort, cap }) {
@@ -61,6 +69,44 @@ export function createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyRevie
         if (rows.length >= cap) break;
       }
       return rows;
+    },
+
+    /**
+     * Streaming export: yields docs one at a time from a real Mongo cursor so
+     * large exports never materialise the whole collection in memory. The
+     * caller is responsible for closing the cursor on completion, error or
+     * client disconnect — the returned object exposes `close()`.
+     */
+    exportCursor({ filter, sort, cap }) {
+      const cursor = Visitor.find(filter).sort(sort).lean().cursor();
+      let count = 0;
+      async function* stream() {
+        try {
+          for await (const doc of cursor) {
+            if (count >= cap) break;
+            count += 1;
+            yield doc;
+          }
+        } finally {
+          await cursor.close().catch(() => {});
+        }
+      }
+      return { stream: stream, close: () => cursor.close().catch(() => {}) };
+    },
+
+    /**
+     * Unique IPs matching a filter (projection: ip only) — a cheap first pass
+     * for the exporter's enrichment maps, never loads full documents.
+     */
+    async exportIps({ filter, cap }) {
+      const ips = new Set();
+      const cursor = Visitor.find(filter).select("ip").lean().cursor();
+      for await (const doc of cursor) {
+        if (doc?.ip) ips.add(doc.ip);
+        if (ips.size >= cap) break;
+      }
+      await cursor.close().catch(() => {});
+      return [...ips];
     },
 
     /**
@@ -389,6 +435,66 @@ export function createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyRevie
           { $set: { key, status, notes, updatedAt: new Date() } },
           { upsert: true, new: true, setDefaultsOnInsert: true }
         ).lean();
+      },
+    },
+
+    ipLabels: {
+      async all() {
+        return IpLabel.find().sort({ updatedAt: -1 }).lean();
+      },
+      /** Paginated + filtered list; search matches ip/displayName/hostname/note. */
+      async list({ filter, skip, limit }) {
+        const [items, total] = await Promise.all([
+          IpLabel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
+          IpLabel.countDocuments(filter),
+        ]);
+        return { items, total };
+      },
+      async get(id) {
+        return IpLabel.findById(id).lean();
+      },
+      async getByIp(normalizedIp) {
+        return IpLabel.findOne({ normalizedIp }).lean();
+      },
+      async create({ normalizedIp, displayName, category, hostname, note }) {
+        const now = new Date();
+        const doc = await IpLabel.create({
+          normalizedIp,
+          displayName,
+          category,
+          hostname: hostname || "",
+          note: note || "",
+          createdAt: now,
+          updatedAt: now,
+        });
+        return doc.toObject();
+      },
+      async update(id, patch) {
+        return IpLabel.findByIdAndUpdate(
+          id,
+          { $set: { ...patch, updatedAt: new Date() } },
+          { new: true, runValidators: true }
+        ).lean();
+      },
+      async remove(id) {
+        const res = await IpLabel.deleteOne({ _id: id });
+        return res.deletedCount > 0;
+      },
+      /**
+       * Batch label lookup for a set of raw IPs — one `$in` query, never N+1.
+       * Returns [{ normalizedIp, displayName, category }].
+       */
+      async mapForIps(ips = []) {
+        const normalized = [...new Set(ips.map((ip) => normalizeIp(ip)).filter(Boolean))];
+        if (!normalized.length) return [];
+        const rows = await IpLabel.find({ normalizedIp: { $in: normalized } })
+          .select("normalizedIp displayName category")
+          .lean();
+        return rows.map((r) => ({
+          normalizedIp: r.normalizedIp,
+          displayName: r.displayName,
+          category: r.category,
+        }));
       },
     },
   };
