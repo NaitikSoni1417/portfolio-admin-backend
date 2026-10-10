@@ -169,3 +169,118 @@ export function mergeFacetBy(rows = [], labelFn, total = 0, top = 8) {
     .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
     .slice(0, top);
 }
+
+/* ------------------------------------------------------------------ *
+ * UTM campaign attribution.
+ *
+ * A link shared on an Instagram bio, a LinkedIn post or a GitHub profile
+ * often arrives with no browser referrer at all (in-app browsers strip it),
+ * so it would silently read as "Direct". A `utm_source` tag on the URL is
+ * the owner's own explicit attribution and therefore wins over the referrer.
+ * ------------------------------------------------------------------ */
+
+const UTM_MAX = 60;
+
+/** Trim, strip control characters and bound one UTM value. Empty means absent. */
+export function sanitizeUtm(value) {
+  let raw = String(value ?? "").trim();
+  raw = [...raw].filter((ch) => ch.charCodeAt(0) > 0x1f && ch.charCodeAt(0) !== 0x7f).join("");
+  if (!raw || /^unknown$/i.test(raw) || raw === "-" || raw === "(none)") return "";
+  return raw.length > UTM_MAX ? raw.slice(0, UTM_MAX) : raw;
+}
+
+/**
+ * Common short links people actually use, mapped to the same source keys the
+ * referrer classifier emits — so `utm_source=instagram-bio` and an Instagram
+ * referrer both land on the one "Instagram" row with the one real logo.
+ * Anything else stays its own named campaign; never guessed into a brand.
+ */
+const UTM_BRANDS = [
+  [/\b(ig|instagram)\b/i, "Instagram", "instagram"],
+  [/\b(li|linkedin)\b/i, "LinkedIn", "linkedin"],
+  [/\b(gh|github)\b/i, "GitHub", "github"],
+  [/\b(x|twitter|twt|tweet)\b/i, "X (Twitter)", "x"],
+  [/\b(google|goog)\b/i, "Google", "google"],
+  [/\b(yt|youtube)\b/i, "YouTube", "youtube"],
+  [/\b(fb|facebook)\b/i, "Facebook", "facebook"],
+  [/\b(reddit)\b/i, "Reddit", "reddit"],
+  [/\b(tiktok|tt)\b/i, "TikTok", "tiktok"],
+  [/\b(ddg|duckduckgo)\b/i, "DuckDuckGo", "duckduckgo"],
+  [/\b(bing)\b/i, "Bing", "bing"],
+  [/\b(telegram|tg)\b/i, "Telegram", "telegram"],
+  [/\b(discord)\b/i, "Discord", "discord"],
+  [/\b(medium)\b/i, "Medium", "medium"],
+  [/\b(quora)\b/i, "Quora", "quora"],
+  [/\b(pinterest|pin)\b/i, "Pinterest", "pinterest"],
+];
+
+function utmCampaign(value) {
+  const key = sanitizeUtm(value);
+  if (!key) return null;
+  for (const [pattern, label, kind] of UTM_BRANDS) {
+    if (pattern.test(key)) return source(label, label, kind);
+  }
+  return source(key, key, "campaign");
+}
+
+/**
+ * Resolve one already-stored traffic-source key, or a raw referrer string
+ * from an older record, to `{ key, label, kind }`.
+ *
+ * Keys without a dot or scheme came from `trafficSourceKey` — either a
+ * resolved source ("Google", "Direct") or a UTM campaign name. Anything
+ * that looks like a URL goes through the full referrer classifier.
+ */
+export function resolveTrafficKey(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return source("Direct", "Direct", "direct");
+
+  if (/^https?:\/\//i.test(raw) || raw.includes(".")) {
+    return normalizeReferrerSource(raw);
+  }
+  if (/^direct$/i.test(raw)) return source("Direct", "Direct", "direct");
+  if (/^development$/i.test(raw)) return source("Development", "Local development", "development");
+  return utmCampaign(raw) || source(raw, raw, "campaign");
+}
+
+/**
+ * The single source of truth for one visit, written at track time.
+ * UTM wins; without it the browser referrer decides.
+ */
+export function resolveTrafficSource({ referrer, utmSource } = {}) {
+  const campaign = utmCampaign(utmSource);
+  if (campaign) return campaign;
+  return normalizeReferrerSource(referrer);
+}
+
+/**
+ * Fold a `trafficSourceKey` facet (with older rows falling back to their raw
+ * referrer) into ranked sources. Campaign and brand rows share one key, so
+ * `utm_source=instagram-bio` and a real Instagram referrer sum together.
+ */
+export function mergeTrafficSources(rows = [], total = 0, top = 8) {
+  const groups = new Map();
+
+  for (const row of rows || []) {
+    const src = resolveTrafficKey(row?._id ?? row?.key);
+    const existing = groups.get(src.key);
+    const count = Number(row?.count) || 0;
+    if (existing) {
+      existing.count += count;
+    } else {
+      groups.set(src.key, { ...src, count });
+    }
+  }
+
+  const base = Number(total) > 0 ? Number(total) : 0;
+  return [...groups.values()]
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      kind: group.kind,
+      count: group.count,
+      share: base > 0 ? Math.round((group.count / base) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+    .slice(0, top);
+}

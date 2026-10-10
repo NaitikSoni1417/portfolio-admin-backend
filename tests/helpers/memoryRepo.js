@@ -108,11 +108,14 @@ export function createMemoryRepo(seed = {}) {
       return clone(sortDocs(matched, sort).slice(0, cap));
     },
 
-    async facet({ filter, field, limit }) {
+    async facet({ filter, field, limit, fallbackField }) {
       const matched = visitors.filter((d) => matchesFilter(d, filter));
       const counts = new Map();
       for (const doc of matched) {
-        const raw = doc[field];
+        // Mirrors MongoDB's $ifNull for the fallback, then the historic rule
+        // that a blank value reads as "Unknown".
+        let raw = doc[field];
+        if ((raw === undefined || raw === null) && fallbackField) raw = doc[fallbackField];
         const key = raw === undefined || raw === null || raw === "" ? "Unknown" : String(raw);
         counts.set(key, (counts.get(key) || 0) + 1);
       }

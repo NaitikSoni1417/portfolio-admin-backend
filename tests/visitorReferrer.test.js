@@ -1,7 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { mergeFacetBy, mergeReferrerSources, normalizeReferrerSource } from "../src/visitorReferrer.js";
+import {
+  mergeFacetBy,
+  mergeReferrerSources,
+  mergeTrafficSources,
+  normalizeReferrerSource,
+  resolveTrafficKey,
+  resolveTrafficSource,
+  sanitizeUtm,
+} from "../src/visitorReferrer.js";
 import { facetLabel, normalizeDeviceLabel, normalizeOsLabel, normalizeBrowserLabel } from "../src/visitorQuery.js";
 
 test("empty, null and literal Unknown all collapse to Direct", () => {
@@ -222,4 +230,93 @@ test("mergeFacetBy collapses a browser facet to readable families", () => {
   assert.equal(merged[1].count, 337, "null folds to Unknown");
   assert.equal(merged[2].count, 94, "Mobile Safari + Safari");
   assert.equal(merged[0].share, 57.5);
+});
+
+// ── UTM campaign attribution ────────────────────────────────────────────────
+
+test("sanitizeUtm trims, strips control characters and bounds the value", () => {
+  assert.equal(sanitizeUtm("  instagram-bio  "), "instagram-bio");
+  assert.equal(sanitizeUtm(""), "");
+  assert.equal(sanitizeUtm(null), "");
+  assert.equal(sanitizeUtm(undefined), "");
+  assert.equal(sanitizeUtm("unknown"), "");
+  assert.equal(sanitizeUtm("Unknown"), "");
+  assert.equal(sanitizeUtm("-"), "");
+  assert.equal(sanitizeUtm("(none)"), "");
+  assert.equal(sanitizeUtm("x".repeat(100)).length, 60);
+});
+
+test("resolveTrafficSource lets a UTM campaign win over the referrer", () => {
+  const fromUtm = resolveTrafficSource({
+    referrer: "",
+    utmSource: "instagram-bio",
+  });
+  assert.equal(fromUtm.key, "Instagram", "instagram-bio folds into the Instagram brand");
+  assert.equal(fromUtm.kind, "instagram");
+
+  const noUtm = resolveTrafficSource({
+    referrer: "https://www.google.com/search?q=naitik",
+    utmSource: "",
+  });
+  assert.equal(noUtm.key, "Google Search");
+
+  const direct = resolveTrafficSource({ referrer: "Direct", utmSource: "" });
+  assert.equal(direct.key, "Direct");
+  assert.equal(direct.kind, "direct");
+});
+
+test("resolveTrafficSource maps short UTM tokens to their brand", () => {
+  assert.equal(resolveTrafficSource({ utmSource: "ig" }).kind, "instagram");
+  assert.equal(resolveTrafficSource({ utmSource: "li" }).kind, "linkedin");
+  assert.equal(resolveTrafficSource({ utmSource: "gh" }).kind, "github");
+  assert.equal(resolveTrafficSource({ utmSource: "yt" }).kind, "youtube");
+  assert.equal(resolveTrafficSource({ utmSource: "twitter" }).kind, "x");
+});
+
+test("an unrecognised UTM source stays its own named campaign, never a brand", () => {
+  const campaign = resolveTrafficSource({
+    referrer: "",
+    utmSource: "ns-newsletter-march",
+  });
+  assert.equal(campaign.key, "ns-newsletter-march");
+  assert.equal(campaign.kind, "campaign");
+  assert.equal(campaign.label, "ns-newsletter-march");
+});
+
+test("resolveTrafficKey handles stored keys and legacy raw referrers alike", () => {
+  assert.equal(resolveTrafficKey("").key, "Direct");
+  assert.equal(resolveTrafficKey("Direct").kind, "direct");
+  assert.equal(resolveTrafficKey("Development").kind, "development");
+  assert.equal(resolveTrafficKey("https://www.google.com/").kind, "google");
+  assert.equal(resolveTrafficKey("instagram-bio").kind, "instagram");
+  assert.equal(resolveTrafficKey("custom-campaign").kind, "campaign");
+});
+
+test("mergeTrafficSources ranks sources and folds campaign variants into brands", () => {
+  const rows = [
+    { _id: "Direct", count: 400 },
+    { _id: "instagram-bio", count: 250 },
+    { _id: "instagram", count: 150 },
+    { _id: "https://www.google.com/", count: 300 },
+    { _id: "https://github.com/naitiksoni1417", count: 100 },
+    { _id: "linkedin-post", count: 80 },
+    { _id: "ns-newsletter", count: 40 },
+  ];
+  const merged = mergeTrafficSources(rows, 1320, 8);
+
+  assert.deepEqual(
+    merged.map((r) => r.key),
+    ["Direct", "Instagram", "Google", "GitHub", "LinkedIn", "ns-newsletter"]
+  );
+  assert.equal(merged[0].count, 400);
+  assert.equal(merged[1].count, 400, "instagram-bio + instagram summed into one brand row");
+  assert.equal(merged[1].kind, "instagram");
+  assert.equal(merged[5].kind, "campaign", "unrecognised campaign keeps its own kind");
+  assert.equal(merged[0].share, 30.3);
+});
+
+test("mergeTrafficSources tolerates empty rows and a zero total", () => {
+  assert.deepEqual(mergeTrafficSources([], 100, 5), []);
+  const merged = mergeTrafficSources([{ _id: "Direct", count: 3 }], 0, 5);
+  assert.equal(merged[0].share, 0);
 });

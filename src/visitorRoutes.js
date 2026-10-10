@@ -6,6 +6,7 @@ import {
   buildVisitorSort,
   parsePagination,
   parseDateRangePreset,
+  parseAnomalyFilters,
   formatRangeLabel,
   totalPagesFor,
   toCsv,
@@ -20,8 +21,12 @@ import {
   normalizeDeviceLabel,
   normalizeOsLabel,
   normalizeBrowserLabel,
+  ANOMALY_SEVERITIES,
+  ANOMALY_TYPES,
+  ANOMALY_PAGE_SIZES,
+  ANOMALY_DEFAULT_PAGE_SIZE,
 } from "./visitorQuery.js";
-import { mergeFacetBy, mergeReferrerSources } from "./visitorReferrer.js";
+import { mergeFacetBy, mergeTrafficSources } from "./visitorReferrer.js";
 import {
   formatAnalyticsLabel,
   resolveAnalyticsRange,
@@ -534,9 +539,10 @@ export function createVisitorRouter({ auth, repo }) {
         // the less common families underneath them.
         repo.facet({ filter, field: "browser", limit: 500 }),
         repo.facet({ filter, field: "os", limit: 20 }),
-        // Referrers are merged into sources client-side by this route, so the
-        // raw scan has to reach past the top 8 URLs to see every variant.
-        repo.facet({ filter, field: "referrer", limit: 500 }),
+        // Sources are merged from `trafficSourceKey` (written at track time:
+        // UTM campaign wins, else the browser referrer). Older records have no
+        // such field, so the facet falls back to their raw referrer string.
+        repo.facet({ filter, field: "trafficSourceKey", fallbackField: "referrer", limit: 500 }),
         repo.facet({ filter, field: "page", limit: 100 }),
         repo.facet({ filter, field: "isp", limit: 50 }),
       ]);
@@ -623,7 +629,7 @@ export function createVisitorRouter({ auth, repo }) {
         devices: mergeFacetBy(deviceRows, normalizeDeviceLabel, totalRows, 8),
         browsers: mergeFacetBy(browserRows, normalizeBrowserLabel, totalRows, 8),
         operatingSystems: mergeFacetBy(osRows, normalizeOsLabel, totalRows, 8),
-        referrers: mergeReferrerSources(referrerRows, totalRows, 8),
+        referrers: mergeTrafficSources(referrerRows, totalRows, 8),
         pages: withShare(pageRows, totalRows).slice(0, 8),
         isps: withShare(ispRows, totalRows).slice(0, 8),
         meta: {
@@ -892,6 +898,15 @@ export function createVisitorRouter({ auth, repo }) {
       const range = resolveRange(parsed.query);
       if (!range.ok) return res.status(400).json({ ok: false, errors: range.errors });
 
+      const filters = parseAnomalyFilters(parsed.query);
+      if (!filters.ok) return res.status(400).json({ ok: false, errors: filters.errors });
+
+      const pagination = parsePagination(parsed.query, {
+        pageSizes: ANOMALY_PAGE_SIZES,
+        defaultLimit: ANOMALY_DEFAULT_PAGE_SIZE,
+      });
+      if (!pagination.ok) return res.status(400).json({ ok: false, errors: pagination.errors });
+
       const [hourly, repeat, failedLogins, blocked, reviews] = await Promise.all([
         repo.hourlyViews({ from: range.from, to: range.to }),
         repo.repeatIps({ filter: range.filter, min: REPEAT_IP_MIN_VIEWS, limit: 25 }),
@@ -907,7 +922,7 @@ export function createVisitorRouter({ auth, repo }) {
         "hour"
       );
 
-      const items = buildAnomalies({
+      const all = buildAnomalies({
         hourly: filled.map((b) => ({ key: b.key, views: b.pageViews })),
         repeat,
         failedLogins,
@@ -917,10 +932,34 @@ export function createVisitorRouter({ auth, repo }) {
         to: range.to,
       });
 
+      // Summary reflects the full window (all severities / types) so the
+      // filter chips always show what exists, not just the current slice.
+      const summary = { high: 0, medium: 0, low: 0, byType: {} };
+      for (const item of all) {
+        summary[item.severity] += 1;
+        summary.byType[item.type] = (summary.byType[item.type] || 0) + 1;
+      }
+
+      const filtered = all.filter((item) => {
+        if (filters.severity && item.severity !== filters.severity) return false;
+        if (filters.type && item.type !== filters.type) return false;
+        return true;
+      });
+
+      const total = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / pagination.limit));
+      const page = Math.min(pagination.page, totalPages);
+      const start = (page - 1) * pagination.limit;
+
       res.json({
         ok: true,
-        items,
-        total: items.length,
+        items: filtered.slice(start, start + pagination.limit),
+        total,
+        page,
+        limit: pagination.limit,
+        totalPages,
+        pageSizes: ANOMALY_PAGE_SIZES,
+        summary,
         range: {
           from: range.from.toISOString(),
           to: range.to.toISOString(),
@@ -932,6 +971,8 @@ export function createVisitorRouter({ auth, repo }) {
           repeatIpMinPageViews: REPEAT_IP_MIN_VIEWS,
           spikeRule: "hourly views ≥ max(10, mean + 3σ) and ≥ 2× mean",
           cap: ANOMALY_CAP,
+          severities: ANOMALY_SEVERITIES,
+          types: ANOMALY_TYPES,
         },
       });
     } catch (err) {

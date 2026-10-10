@@ -24,6 +24,15 @@ export const BOOKMARK_LABEL_MAX = 80;
 export const BOOKMARK_NOTES_MAX = 600;
 export const ANOMALY_NOTES_MAX = 600;
 export const ANOMALY_STATUSES = ["open", "in_review", "resolved", "false_positive"];
+export const ANOMALY_SEVERITIES = ["high", "medium", "low"];
+export const ANOMALY_TYPES = [
+  "traffic_spike",
+  "high_volume_endpoint",
+  "failed_logins",
+  "firewall_block",
+];
+export const ANOMALY_PAGE_SIZES = [10, 25, 50];
+export const ANOMALY_DEFAULT_PAGE_SIZE = 25;
 
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
@@ -535,6 +544,37 @@ export function validateReviewInput(body = {}) {
     errors,
     value: { status, notes: sanitizeText(body.notes, ANOMALY_NOTES_MAX) },
   };
+}
+
+/**
+ * Validate the `severity` / `type` filters for the anomalies endpoint.
+ * Empty or "all" means "no filter"; anything outside the whitelist is a 400 —
+ * silently ignoring a typo would show the operator the wrong set of signals.
+ */
+export function parseAnomalyFilters(query = {}) {
+  const errors = [];
+  const rawSeverity = str(query.severity).toLowerCase();
+  const rawType = str(query.type).toLowerCase();
+
+  let severity = "";
+  if (rawSeverity && rawSeverity !== "all") {
+    if (!ANOMALY_SEVERITIES.includes(rawSeverity)) {
+      errors.push(`severity must be one of ${ANOMALY_SEVERITIES.join(", ")}`);
+    } else {
+      severity = rawSeverity;
+    }
+  }
+
+  let type = "";
+  if (rawType && rawType !== "all") {
+    if (!ANOMALY_TYPES.includes(rawType)) {
+      errors.push(`type must be one of ${ANOMALY_TYPES.join(", ")}`);
+    } else {
+      type = rawType;
+    }
+  }
+
+  return { ok: errors.length === 0, errors, severity, type };
 }
 
 /** Stable, URL-safe key for a persisted review record. */

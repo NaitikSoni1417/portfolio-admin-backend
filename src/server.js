@@ -15,6 +15,7 @@ import helmet from "helmet";
 import { auth } from "./middleware/auth.js";
 import { createMongoRepo } from "./visitorRepo.js";
 import { createVisitorRouter } from "./visitorRoutes.js";
+import { resolveTrafficSource, sanitizeUtm } from "./visitorReferrer.js";
 
 import path from "path";
 import { fileURLToPath } from "url";
@@ -76,6 +77,12 @@ const visitorSchema = new mongoose.Schema({
   language: String,
   timezone: String,
   referrer: String,
+  utmSource: { type: String, default: "" },
+  utmMedium: { type: String, default: "" },
+  utmCampaign: { type: String, default: "" },
+  // Resolved at track time: UTM campaign wins, else the browser referrer.
+  // Older records simply lack the field and fall back to `referrer` at read.
+  trafficSourceKey: { type: String, default: "" },
   browser: String,
   os: String,
   device: String,
@@ -101,6 +108,7 @@ visitorSchema.index({ device: 1 });
 visitorSchema.index({ browser: 1 });
 visitorSchema.index({ page: 1 });
 visitorSchema.index({ isp: 1 });
+visitorSchema.index({ trafficSourceKey: 1 });
 
 const messageSchema = new mongoose.Schema({
   name: String,
@@ -1418,6 +1426,14 @@ app.post("/api/track", async (req, res) => {
       ? uaResult.device.type.charAt(0).toUpperCase() + uaResult.device.type.slice(1)
       : (req.body.device || "Desktop");
 
+    const utmSource = sanitizeUtm(req.body.utmSource);
+    const utmMedium = sanitizeUtm(req.body.utmMedium);
+    const utmCampaign = sanitizeUtm(req.body.utmCampaign);
+    const trafficSource = resolveTrafficSource({
+      referrer: req.body.referrer || "",
+      utmSource,
+    });
+
     await Visitor.create({
       ip,
       visitorId: req.body.visitorId || ip,
@@ -1429,6 +1445,10 @@ app.post("/api/track", async (req, res) => {
       language: req.body.language || "",
       timezone: req.body.timezone || "",
       referrer: req.body.referrer || "",
+      utmSource,
+      utmMedium,
+      utmCampaign,
+      trafficSourceKey: trafficSource.key,
       city: req.body.city || geo.city || "Unknown",
       region: req.body.region || geo.region || "Unknown",
       country: req.body.country || geo.country || "Unknown",

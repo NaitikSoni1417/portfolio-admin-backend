@@ -63,10 +63,17 @@ export function createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyRevie
       return rows;
     },
 
-    async facet({ filter, field, limit }) {
+    /**
+     * Facet a field, with an optional fallback field for records written
+     * before the primary one existed (e.g. `trafficSourceKey` → `referrer`).
+     */
+    async facet({ filter, field, limit, fallbackField }) {
+      const idExpr = fallbackField
+        ? { $ifNull: [`$${field}`, `$${fallbackField}`, "Unknown"] }
+        : { $ifNull: [`$${field}`, "Unknown"] };
       return Visitor.aggregate([
         { $match: filter },
-        { $group: { _id: { $ifNull: [`$${field}`, "Unknown"] }, count: { $sum: 1 } } },
+        { $group: { _id: idExpr, count: { $sum: 1 } } },
         { $sort: { count: -1, _id: 1 } },
         { $limit: limit },
       ]);
