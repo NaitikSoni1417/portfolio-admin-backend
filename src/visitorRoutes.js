@@ -16,7 +16,12 @@ import {
   isValidIp,
   normalizeIp,
   zeroFillSeries,
+  facetLabel,
+  normalizeDeviceLabel,
+  normalizeOsLabel,
+  normalizeBrowserLabel,
 } from "./visitorQuery.js";
+import { mergeFacetBy, mergeReferrerSources } from "./visitorReferrer.js";
 import {
   formatAnalyticsLabel,
   resolveAnalyticsRange,
@@ -83,7 +88,7 @@ function round1(n) {
 function withShare(rows = [], total = 0) {
   const base = Number(total) > 0 ? Number(total) : 0;
   return (rows || []).map((row) => ({
-    key: row?._id === undefined || row?._id === null || row?._id === "" ? "Unknown" : String(row._id),
+    key: facetLabel(row?._id),
     count: Number(row?.count) || 0,
     share: base > 0 ? round1(((Number(row?.count) || 0) / base) * 100) : 0,
   }));
@@ -524,9 +529,14 @@ export function createVisitorRouter({ auth, repo }) {
         repo.hourBreakdown({ filter, timezone: range.timezone }),
         repo.facet({ filter, field: "country", limit: FACET_SCAN_LIMIT }),
         repo.facet({ filter, field: "device", limit: 20 }),
-        repo.facet({ filter, field: "browser", limit: 50 }),
+        // Browsers are folded to families, so the raw scan has to reach past
+        // every version string (Chrome 148…151, Mobile Chrome 151…) to see
+        // the less common families underneath them.
+        repo.facet({ filter, field: "browser", limit: 500 }),
         repo.facet({ filter, field: "os", limit: 20 }),
-        repo.facet({ filter, field: "referrer", limit: 15 }),
+        // Referrers are merged into sources client-side by this route, so the
+        // raw scan has to reach past the top 8 URLs to see every variant.
+        repo.facet({ filter, field: "referrer", limit: 500 }),
         repo.facet({ filter, field: "page", limit: 100 }),
         repo.facet({ filter, field: "isp", limit: 50 }),
       ]);
@@ -608,10 +618,12 @@ export function createVisitorRouter({ auth, repo }) {
         series,
         hourly,
         countries: { total: countryRows.length, items: countrySplit.head, others: countrySplit.others },
-        devices: withShare(deviceRows, totalRows).slice(0, 8),
-        browsers: withShare(browserRows, totalRows).slice(0, 8),
-        operatingSystems: withShare(osRows, totalRows).slice(0, 8),
-        referrers: withShare(referrerRows, totalRows).slice(0, 8),
+        // Device and OS are folded to canonical labels first so `Mobile` and
+        // `mobile` stop showing up as two separate rows.
+        devices: mergeFacetBy(deviceRows, normalizeDeviceLabel, totalRows, 8),
+        browsers: mergeFacetBy(browserRows, normalizeBrowserLabel, totalRows, 8),
+        operatingSystems: mergeFacetBy(osRows, normalizeOsLabel, totalRows, 8),
+        referrers: mergeReferrerSources(referrerRows, totalRows, 8),
         pages: withShare(pageRows, totalRows).slice(0, 8),
         isps: withShare(ispRows, totalRows).slice(0, 8),
         meta: {

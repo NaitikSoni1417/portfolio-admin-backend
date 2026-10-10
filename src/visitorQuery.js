@@ -226,6 +226,113 @@ export function formatNumber(value) {
   return Number(value).toLocaleString("en-US");
 }
 
+/**
+ * Canonical device labels. The parser occasionally emits `mobile` and `Mobile`
+ * for the same thing; folding case is a display fix, not an invention.
+ */
+const DEVICE_LABELS = {
+  desktop: "Desktop",
+  mobile: "Mobile",
+  tablet: "Tablet",
+  bot: "Bot",
+  crawler: "Bot",
+  spider: "Bot",
+  smarttv: "Smart TV",
+  "smart tv": "Smart TV",
+  console: "Console",
+  wearable: "Wearable",
+  unknown: "Unknown",
+};
+
+export function normalizeDeviceLabel(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "Unknown";
+  const lower = raw.toLowerCase();
+  if (DEVICE_LABELS[lower]) return DEVICE_LABELS[lower];
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+/**
+ * Canonical operating-system families. "Windows 11" and "Windows 10" fold to
+ * "Windows" so the distribution chart is readable; the raw string is still
+ * available on every visitor record in the table.
+ */
+const OS_FAMILIES = [
+  ["windows", "Windows"],
+  ["macos", "macOS"],
+  ["mac os", "macOS"],
+  ["mac os x", "macOS"],
+  ["mac", "macOS"],
+  ["ios", "iOS"],
+  ["iphone os", "iOS"],
+  ["ipad os", "iOS"],
+  ["android", "Android"],
+  ["chrome os", "Chrome OS"],
+  ["chromeos", "Chrome OS"],
+  ["linux", "Linux"],
+  ["ubuntu", "Ubuntu"],
+  ["fedora", "Fedora"],
+  ["harmonyos", "HarmonyOS"],
+  ["other", "Unknown"],
+  ["unknown", "Unknown"],
+];
+
+export function normalizeOsLabel(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "Unknown";
+  const lower = raw.toLowerCase();
+  for (const [key, label] of OS_FAMILIES) {
+    if (lower === key || lower.startsWith(`${key} `)) return label;
+  }
+  return raw;
+}
+
+/**
+ * Canonical browser families. The UA parser stores "Chrome 150", "Chrome 151",
+ * "Mobile Chrome 151"… as distinct values; folding them to one family makes the
+ * distribution chart readable. Order matters — Edge, Opera, Brave, Vivaldi,
+ * Samsung, UC, Instagram and Yahoo all send a UA string containing another
+ * browser's name, so they are checked first.
+ */
+const BROWSER_FAMILIES = [
+  [/\bedg[e]?\b|edga|edgios|edge\//i, "Edge"],
+  [/\bopr\b|opera|opt\/|opera mini|opera mobi/i, "Opera"],
+  [/vivaldi/i, "Vivaldi"],
+  [/brave/i, "Brave"],
+  [/samsung/i, "Samsung Internet"],
+  [/uc ?browser|ucweb|\buc\b/i, "UC Browser"],
+  [/yabrowser|yahoo/i, "Yahoo Browser"],
+  [/instagram/i, "Instagram"],
+  [/tor browser|\btor\b/i, "Tor"],
+  [/electron/i, "Electron"],
+  [/chrome|crios|chromium|headless chrome|headless/i, "Chrome"],
+  [/firefox|fxios|iceweasel|seamonkey/i, "Firefox"],
+  [/safari/i, "Safari"],
+  [/\bie\b|msie|trident|internet explorer/i, "Internet Explorer"],
+  [
+    /curl|wget|postman|insomnia|python|requests|node|okhttp|go-http|java|axios|libwww|scrapy|httpie|bot|crawler|spider|scanner|monitoring|uptime/i,
+    "Bot",
+  ],
+];
+
+export function normalizeBrowserLabel(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "Unknown";
+  for (const [pattern, label] of BROWSER_FAMILIES) {
+    if (pattern.test(raw)) return label;
+  }
+  // A bare version string the parser emitted for a family already seen above
+  // still folds in via the regexes; anything truly unknown keeps its own name.
+  return raw;
+}
+
+/** Trim a facet value to a bounded, non-empty display string. */
+export function facetLabel(value, max = 80) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "Unknown";
+  return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
+}
+
 /** `"1–50 of 2,431"` — the exact label the table header renders. */
 export function formatRangeLabel(total, page, limit) {
   const safeTotal = Number(total) > 0 ? Number(total) : 0;
