@@ -18,12 +18,32 @@ function sidOf(doc) {
   return doc.sessionId ? String(doc.sessionId) : `anon:${doc._id}`;
 }
 
-function bucketOf(doc, granularity) {
+function bucketOf(doc, granularity, timezone = "UTC") {
   const d = doc.createdAt instanceof Date ? doc.createdAt : new Date(doc.createdAt);
-  if (granularity === "hour") {
-    return `${d.toISOString().slice(0, 13)}:00:00.000Z`;
+  if (timezone === "UTC") {
+    if (granularity === "hour") {
+      return `${d.toISOString().slice(0, 13)}:00:00.000Z`;
+    }
+    return d.toISOString().slice(0, 10);
   }
-  return d.toISOString().slice(0, 10);
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const bag = {};
+  for (const part of parts) {
+    if (part.type !== "literal") bag[part.type] = part.value;
+  }
+  const day = `${bag.year}-${bag.month}-${bag.day}`;
+  if (granularity === "hour") {
+    return `${day}T${String(Number(bag.hour) % 24).padStart(2, "0")}:00:00.000Z`;
+  }
+  return day;
 }
 
 function compareValues(a, b) {
@@ -123,12 +143,12 @@ export function createMemoryRepo(seed = {}) {
       };
     },
 
-    async series({ filter, granularity }) {
+    async series({ filter, granularity, timezone = "UTC" }) {
       const matched = visitors.filter((d) => matchesFilter(d, filter));
       const buckets = new Map();
 
       for (const doc of matched) {
-        const key = bucketOf(doc, granularity);
+        const key = bucketOf(doc, granularity, timezone);
         if (!buckets.has(key)) {
           buckets.set(key, { key, pageViews: 0, sessions: new Set(), uids: new Set() });
         }
@@ -142,6 +162,31 @@ export function createMemoryRepo(seed = {}) {
         .sort((a, b) => a.key.localeCompare(b.key))
         .map((b) => ({
           key: b.key,
+          pageViews: b.pageViews,
+          sessions: b.sessions.size,
+          uniqueIps: b.uids.size,
+        }));
+    },
+
+    async hourBreakdown({ filter, timezone = "UTC" }) {
+      const matched = visitors.filter((d) => matchesFilter(d, filter));
+      const buckets = new Map();
+
+      for (const doc of matched) {
+        const hour = Number(bucketOf(doc, "hour", timezone).slice(11, 13));
+        if (!buckets.has(hour)) {
+          buckets.set(hour, { hour, pageViews: 0, sessions: new Set(), uids: new Set() });
+        }
+        const bucket = buckets.get(hour);
+        bucket.pageViews += 1;
+        bucket.sessions.add(sidOf(doc));
+        bucket.uids.add(uidOf(doc));
+      }
+
+      return [...buckets.values()]
+        .sort((a, b) => a.hour - b.hour)
+        .map((b) => ({
+          hour: b.hour,
           pageViews: b.pageViews,
           sessions: b.sessions.size,
           uniqueIps: b.uids.size,

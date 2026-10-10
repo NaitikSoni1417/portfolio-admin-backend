@@ -10,6 +10,7 @@
  *   exportAll({filter, sort, cap})               -> docs[]
  *   facet({filter, field, limit})                -> [{ _id, count }]
  *   series({filter, from, to, granularity})      -> [{ key, pageViews, sessions, uniqueIps }]
+ *   hourBreakdown({filter, timezone})            -> [{ hour, pageViews, sessions, uniqueIps }]
  *   metrics({filter})                            -> { pageViews, sessions, uniqueIps, returningIps }
  *   visitStats({ips})                            -> [{ ip, visits, firstSeen, lastSeen }]
  *   bookmarkStats({ips})                         -> [{ ip, visits, firstSeen, lastSeen, ... }]
@@ -116,6 +117,42 @@ export function createMongoRepo({ Visitor, SecurityLog, IpBookmark, AnomalyRevie
 
       return rows.map((r) => ({
         key: r._id,
+        pageViews: r.pageViews,
+        sessions: r.sessions,
+        uniqueIps: new Set(r.uids || []).size,
+      }));
+    },
+
+    /**
+     * 24-bucket "traffic by hour of day" in the requested timezone, collapsed
+     * across the whole range. `timezone` is an IANA name resolved by MongoDB.
+     */
+    async hourBreakdown({ filter, timezone = "UTC" }) {
+      const rows = await Visitor.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: {
+              hour: { $hour: { date: "$createdAt", timezone } },
+              sid: sidExpr,
+              uid: uidExpr,
+            },
+            views: { $sum: 1 },
+          },
+        },
+        {
+          $group: {
+            _id: "$_id.hour",
+            sessions: { $sum: 1 },
+            pageViews: { $sum: "$views" },
+            uids: { $addToSet: "$_id.uid" },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]);
+
+      return rows.map((r) => ({
+        hour: Number(r._id),
         pageViews: r.pageViews,
         sessions: r.sessions,
         uniqueIps: new Set(r.uids || []).size,

@@ -17,6 +17,13 @@ import {
   normalizeIp,
   zeroFillSeries,
 } from "./visitorQuery.js";
+import {
+  formatAnalyticsLabel,
+  resolveAnalyticsRange,
+  zonedDayEnd,
+  zonedDayStart,
+  zeroFillAnalytics,
+} from "./visitorTime.js";
 
 /**
  * Repeat-query threshold for the anomaly view. Deliberately high enough that
@@ -24,6 +31,26 @@ import {
  */
 const REPEAT_IP_MIN_VIEWS = 40;
 const ANOMALY_CAP = 60;
+
+/** Facet rows the analytics view returns before the rest is folded into "Others". */
+const COUNTRY_TOP = 8;
+const SMALL_FACET_TOP = 6;
+/** Upper bound on a facet group query — a guard, not a page size. */
+const FACET_SCAN_LIMIT = 2000;
+
+/**
+ * Explicit, display-ready definitions of every headline number. The analytics
+ * view must never leave a metric's meaning up to the reader's guesswork.
+ */
+const METRIC_DEFINITIONS = {
+  pageViews: "One stored visit record. A single page load that was recorded once counts as one.",
+  sessions:
+    "Distinct sessions in the range. Records without a sessionId are counted as their own session.",
+  uniqueIps:
+    "Distinct visitor identities in the range — the visitorId when one was recorded, otherwise the IP address.",
+  newIps: "Identities whose first recorded visit falls inside the selected range.",
+  returningIps: "Identities with more than one recorded visit inside the selected range.",
+};
 
 const DISCLAIMER =
   "Pattern-based signal computed from stored telemetry. It is not a verdict that a person, " +
@@ -50,6 +77,35 @@ function plainQuery(req) {
 
 function round1(n) {
   return Math.round(n * 10) / 10;
+}
+
+/** `{ _id, count }` rows → `{ key, count, share }`, share as a percentage of `total`. */
+function withShare(rows = [], total = 0) {
+  const base = Number(total) > 0 ? Number(total) : 0;
+  return (rows || []).map((row) => ({
+    key: row?._id === undefined || row?._id === null || row?._id === "" ? "Unknown" : String(row._id),
+    count: Number(row?.count) || 0,
+    share: base > 0 ? round1(((Number(row?.count) || 0) / base) * 100) : 0,
+  }));
+}
+
+/**
+ * Keep the top `top` rows and fold the remainder into a single "Others" row so
+ * a long tail never turns into an unreadable list.
+ */
+function splitOthers(items = [], top = SMALL_FACET_TOP) {
+  const head = items.slice(0, top);
+  const rest = items.slice(top);
+  const restCount = rest.reduce((sum, row) => sum + row.count, 0);
+  return { head, others: restCount > 0 ? { key: "Others", count: restCount, rest: rest.length } : null };
+}
+
+/** Percent change vs the previous window, or `null` when there is nothing to divide by. */
+function deltaPct(current, previous) {
+  const c = Number(current);
+  const p = Number(previous);
+  if (!Number.isFinite(c) || !Number.isFinite(p) || p <= 0) return null;
+  return round1(((c - p) / p) * 100);
 }
 
 /**
@@ -416,67 +472,155 @@ export function createVisitorRouter({ auth, repo }) {
   });
 
   // ── GET /api/admin/visitors/analytics — global traffic ────────────────────
+  //
+  // Aggregates the *whole* visitor collection for the requested window — not a
+  // page of loaded rows. Never returns raw IP addresses: every breakdown is a
+  // count grouped by a non-identifying dimension.
   router.get("/analytics", auth, async (req, res) => {
     try {
       const parsed = plainQuery(req);
       if (parsed.error) return res.status(400).json({ ok: false, errors: [parsed.error] });
 
-      const range = resolveRange(parsed.query);
+      const range = resolveAnalyticsRange(parsed.query);
       if (!range.ok) return res.status(400).json({ ok: false, errors: range.errors });
+
+      // Range is resolved timezone-aware above, so strip the date keys before
+      // the generic filter builder — it would re-parse them as UTC.
+      const filterQuery = { ...parsed.query };
+      for (const key of ["from", "to", "startDate", "endDate", "preset", "timezone", "granularity"]) {
+        delete filterQuery[key];
+      }
+      const built = buildVisitorFilter(filterQuery);
+      if (!built.ok) return res.status(400).json({ ok: false, errors: built.errors });
+
+      const filter = { ...built.filter, createdAt: { $gte: range.fromInstant, $lte: range.toInstant } };
+      const previous = range.previous;
+      const previousFilter = previous
+        ? {
+            ...built.filter,
+            createdAt: {
+              $gte: zonedDayStart(previous.from, range.timezone),
+              $lte: zonedDayEnd(previous.to, range.timezone),
+            },
+          }
+        : null;
 
       const [
         metrics,
+        previousMetrics,
         buckets,
-        countries,
-        devices,
-        browsers,
-        operatingSystems,
-        referrers,
-        pages,
-        isps,
+        hourBuckets,
+        countryRows,
+        deviceRows,
+        browserRows,
+        osRows,
+        referrerRows,
+        pageRows,
+        ispRows,
       ] = await Promise.all([
-        repo.metrics({ filter: range.filter }),
-        repo.series({ filter: range.filter, granularity: range.granularity }),
-        repo.facet({ filter: range.filter, field: "country", limit: 50 }),
-        repo.facet({ filter: range.filter, field: "device", limit: 20 }),
-        repo.facet({ filter: range.filter, field: "browser", limit: 50 }),
-        repo.facet({ filter: range.filter, field: "os", limit: 20 }),
-        repo.facet({ filter: range.filter, field: "referrer", limit: 15 }),
-        repo.facet({ filter: range.filter, field: "page", limit: 100 }),
-        repo.facet({ filter: range.filter, field: "isp", limit: 50 }),
+        repo.metrics({ filter }),
+        previousFilter ? repo.metrics({ filter: previousFilter }) : Promise.resolve(null),
+        repo.series({ filter, granularity: range.granularity, timezone: range.timezone }),
+        repo.hourBreakdown({ filter, timezone: range.timezone }),
+        repo.facet({ filter, field: "country", limit: FACET_SCAN_LIMIT }),
+        repo.facet({ filter, field: "device", limit: 20 }),
+        repo.facet({ filter, field: "browser", limit: 50 }),
+        repo.facet({ filter, field: "os", limit: 20 }),
+        repo.facet({ filter, field: "referrer", limit: 15 }),
+        repo.facet({ filter, field: "page", limit: 100 }),
+        repo.facet({ filter, field: "isp", limit: 50 }),
       ]);
+
+      const totalRows = metrics.pageViews;
+
+      const totals = {
+        pageViews: metrics.pageViews,
+        sessions: metrics.sessions,
+        uniqueIps: metrics.uniqueIps,
+        // "New" and "returning" are both defined *inside the selected range* so
+        // the split always adds up to `uniqueIps` with no cross-range guesswork.
+        newIps: Math.max(0, metrics.uniqueIps - metrics.returningIps),
+        returningIps: metrics.returningIps,
+        countries: countryRows.length,
+      };
+
+      let previousTotals = null;
+      let deltas = null;
+      if (previousMetrics) {
+        previousTotals = {
+          pageViews: previousMetrics.pageViews,
+          sessions: previousMetrics.sessions,
+          uniqueIps: previousMetrics.uniqueIps,
+        };
+        deltas = {
+          pageViews: deltaPct(totals.pageViews, previousMetrics.pageViews),
+          sessions: deltaPct(totals.sessions, previousMetrics.sessions),
+          uniqueIps: deltaPct(totals.uniqueIps, previousMetrics.uniqueIps),
+        };
+      }
+
+      const countryItems = withShare(countryRows, totalRows);
+      const countrySplit = splitOthers(countryItems, COUNTRY_TOP);
+
+      // Zero-filled in the requested timezone so a quiet local day reads as a
+      // flat zero instead of a hole in the chart.
+      const series = zeroFillAnalytics(
+        buckets,
+        range.fromInstant,
+        range.toInstant,
+        range.granularity,
+        range.timezone
+      );
+
+      // Collapsed to 24 local hours across the whole range — "traffic by hour
+      // of day", independent of how long the selected window is.
+      const hourly = Array.from({ length: 24 }, (_, hour) => {
+        const found = hourBuckets.find((row) => row.hour === hour);
+        return {
+          hour,
+          pageViews: found?.pageViews ?? 0,
+          sessions: found?.sessions ?? 0,
+          uniqueIps: found?.uniqueIps ?? 0,
+        };
+      });
 
       res.json({
         ok: true,
         range: {
-          from: range.from.toISOString(),
-          to: range.to.toISOString(),
+          from: range.from,
+          to: range.to,
+          label: formatAnalyticsLabel(range.from, range.to, range.timezone),
+          timezone: range.timezone,
           granularity: range.granularity,
           preset: range.preset,
-          timezone: "UTC",
+          days: range.days,
         },
-        metrics,
-        series: zeroFillSeries(
-          buckets,
-          range.from.toISOString(),
-          range.to.toISOString(),
-          range.granularity
-        ),
-        facets: {
-          countries: countries.slice(0, 12),
-          devices: devices.slice(0, 8),
-          browsers: browsers.slice(0, 10),
-          operatingSystems: operatingSystems.slice(0, 10),
-          referrers: referrers.slice(0, 12),
-          pages: pages.slice(0, 12),
-        },
-        options: {
-          countries,
-          devices,
-          browsers,
-          operatingSystems,
-          pages,
-          isps,
+        totals,
+        previous: previousTotals
+          ? {
+              ...previousTotals,
+              from: previous.from,
+              to: previous.to,
+              days: previous.days,
+            }
+          : null,
+        deltas,
+        series,
+        hourly,
+        countries: { total: countryRows.length, items: countrySplit.head, others: countrySplit.others },
+        devices: withShare(deviceRows, totalRows).slice(0, 8),
+        browsers: withShare(browserRows, totalRows).slice(0, 8),
+        operatingSystems: withShare(osRows, totalRows).slice(0, 8),
+        referrers: withShare(referrerRows, totalRows).slice(0, 8),
+        pages: withShare(pageRows, totalRows).slice(0, 8),
+        isps: withShare(ispRows, totalRows).slice(0, 8),
+        meta: {
+          generatedAt: new Date().toISOString(),
+          timezone: range.timezone,
+          granularity: range.granularity,
+          days: range.days,
+          previousRange: previous ? { from: previous.from, to: previous.to, days: previous.days } : null,
+          definitions: METRIC_DEFINITIONS,
         },
       });
     } catch (err) {
